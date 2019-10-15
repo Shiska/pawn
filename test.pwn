@@ -2,7 +2,7 @@
 
 #include <YSI_Core\y_testing>
 
-#include "CountingSort"
+#include "countingsort"
 
 Swap({Float, _}: ...) {
     #emit lref.s.pri 12
@@ -35,6 +35,6 @@ Test:Run() {
     ShuffleArray(array);
 
     ASSERT(!IsSorted(array));
-    ASSERT(CountingSort(array));
+    ASSERT(countingsort(array));
     ASSERT(IsSorted(array));
 }

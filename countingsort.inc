@@ -1,4 +1,4 @@
-stock bool: CountingSort(array[], size = sizeof array) {
+stock bool: countingsort(array[], size = sizeof array) {
     new
         i,
         val,

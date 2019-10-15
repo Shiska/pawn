@@ -1,6 +1,6 @@
 {
     "user": "Shiska",
-    "repo": "CountingSort",
+    "repo": "pawn",
     "entry": "test.pwn",
     "output": "test.amx",
     "dev_dependencies": [
