@@ -42,7 +42,8 @@ strjoin(local, localLines, ", "); // local = "a, b, c"
 ```
 
 Note: Don't put anything between **_base_** and **_lines_**  
-Note: If strjoins fails increase **_base_** array by the negative returned value
+Note: If strjoins fails increase **_base_** array by the negative returned value  
+Note: Overwrites / reuses **_lines_** array, it will be unuseable afterwards
 
 ## Testing
 
