@@ -1,4 +1,4 @@
-# pawn
+# strjoin
 
 [![sampctl](https://shields.southcla.ws/badge/sampctl-strjoin-2f2f2f.svg?style=for-the-badge)](https://github.com/Shiska/pawn/tree/strjoin)
 
