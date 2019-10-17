@@ -18,32 +18,24 @@ Include in your code and begin using the library:
 
 ## Usage
 
-Global arrays, first the **_base_**, second the **_lines_**
+Joins the entries together, separated by seperator, into **_dest_**.
 
 ```pawn
-new global[] = {}; // empty array (0 cells), increase if strjoin fails due to insufficient memory
-new globalLines[][] = {
+// returns excess (positive value) / insufficient (negative value) memory in cells
+strjoin(dest[], const entries[][], const seperator[] = "", const buffer = sizeof dest, count = sizeof entries);
+```
+
+But there is a special case if buffer is set to **_cellmax_** it will overwrite the adjacent memory  
+The intended use is with global constant data but it also works with local constant data
+
+```pawn
+new global[] = {}; // dest array, increase if strjoin fails due to insufficient memory (add the negative return value to the array size)
+new globalEntries[][] = { // will be overwritten and can't be used anymore
     "a", "b", "c"
 };
-
 // some function
-strjoin(global, globalLines, ", "); // global = "a, b, c"
+strjoin(global, globalLines, ", ", cellmax); // global = "a, b, c" 
 ```
-
-Local arrays, reversed order, first the **_lines_**, second the **_base_**
-
-```pawn
-new localLines[][] = {
-    "a", "b", "c"
-};
-new local[1] = {}; // local array need to have at least 1 cell, increase if strjoin fails due to insufficient memory
-
-strjoin(local, localLines, ", "); // local = "a, b, c"
-```
-
-Note: Don't put anything between **_base_** and **_lines_**  
-Note: If strjoins fails increase **_base_** array by the negative returned value  
-Note: Overwrites / reuses **_lines_** array, it will be unuseable afterwards
 
 ## Testing
 

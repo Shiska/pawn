@@ -1,88 +1,131 @@
 #include <string>
 
-// Joins line array together seperated by 'seperator' and moves everything to base address
-// Note: Everything between the base address and the lines array will be deleted and used as buffer
-//
-// Therefor use have to define it like that if your seperator uses 2 or less characters
-// new base[] = {}; // empty array (0 cells)
-// new lines[][] = {
-//     "a", "b", "c"
-// };
-// strjoin(base, lines, ", ")
-//
-// If three or more characters you need to increase the base buffer to match the memory usage returned by strjoin
-// new base[NEGATIVE_RETURN_VALUE_OF_STRJOIN]; // in this case with 3 charcters as seperator and three lines strjoin would return -1, so you need at least 1 additional cell
-// Note: Local arrays can't be empty and must have at least 1 cell, also the order must be reversed, see test.pwn for an example
-stock strjoin(base[], lines[][], const seperator[] = "", size = sizeof lines) {
-    // returns excess memory space in cells, 0 = perfect match
-    // if negative the function failed due to lack of memory, increase base buffer
-    // if positive decrease base buffer (only possible with 3 or more characters as seperator otherwise buffer should already be 0)
+stock strjoin(dest[], const entries[][], const seperator[] = "", const buffer = sizeof dest, count = sizeof entries) {
+    /// <summary>Joins the string in lines together seperated by seperator</summary>
+    /// <param name="dest">Dest array</param>
+    /// <param name="entries">Source array</param>
+    /// <param name="seperator">Seperator to join the strings from entries</param>
+    /// <param name="buffer">By default size of dest but can be set it to cellmax, so it will overwrite adjacent memory, see example</param>
+    /// <param name="count">Entry count, by default sizeof entries</param>
+    /// <example>
+    /// // To join constant global strings together and overwrite the source array use it like that
+    /// new dest[] = {}; // empty array (0 cells), increase the size if strjoin fails due to insufficient memory
+    /// new entries[][] = { // entries needs to be right after dest, so it gets overwritten
+    ///     "a", "b", "c"
+    /// };
+    /// strjoin(dest, entries, ", ", cellmax); // strjoin will return the amout of insufficient memory as negative value
+    ///</example>
+    /// <example>
+    /// // Otherwise the normal usage
+    /// new dest[8]; // doesn't need to be right after but you need to increase the buffer to match the output
+    /// new entries[][] = {
+    ///     "a", "b", "c"
+    /// };
+    /// strjoin(dest, entries, ", "); // strjoin will return the amout of insufficient memory as negative value
+    ///</example>
+    /// <returns>Excess memory space in cells, 0 = perfect match, negative values are insufficient cells</returns>
 
     new memory;
 
-    #emit load.s.pri lines
-    #emit load.s.alt base
-    #emit sub // memory offset
-    #emit stor.s.pri memory
+    if(buffer == cellmax) { // lets try to overwrite the entries array
+        #emit load.s.pri entries
+        #emit load.s.alt dest
+        #emit sub
+        #emit stor.s.pri memory
 
-    new sepLength = strlen(seperator);
+        new sepLength = strlen(seperator); // this calculation is wrong if someone specifies the second dimension, aka wasting memory
+        memory = (memory >> 2) + (count << 1) - sepLength * (count - 1) - 1;
 
-    memory = (memory >> 2) + (size << 1) - sepLength * (size - 1) - 1;
+        if(memory < 0) { // insufficient memory, increase buffer
+            dest[0] = EOS;
+        } else {
+            new length = count;
+            // push entries last to first
+            while(length--) { // because we will overwrite the indices
+                #emit load.s.alt entries
+                #emit load.s.pri length
+                #emit idxaddr
+                #emit move.alt
+                #emit load.i
+                #emit add // dest
+                #emit push.pri
+            }
+            sepLength <<= 2;
 
-    if(memory < 0) { // insufficient memory, increase buffer
-        base[0] = EOS;
-    } else {
-        new length;
-        new i = size;
-        // push entries last to first
-        while(i--) { // because we will overwrite the indices
-            #emit load.s.alt lines
-            #emit load.s.pri i
+            #emit load.s.pri seperator
+            #emit stor.s.pri entries
+
+            while(--count) { // pop entries, frist to last
+                #emit pop.pri
+                #emit stor.s.pri seperator
+
+                length = strlen(seperator) << 2;
+                // memcpy fails with cellmax as maxlength so I push length twice
+                memcpy(dest, seperator, 0, length, length);
+
+                #emit load.s.pri dest
+                #emit load.s.alt length
+                #emit add
+                #emit stor.s.pri dest
+                #emit load.s.pri entries
+                #emit stor.s.pri seperator
+
+                memcpy(dest, seperator, 0, sepLength, sepLength);
+
+                #emit load.s.pri dest
+                #emit load.s.alt sepLength
+                #emit add
+                #emit stor.s.pri dest
+            }
+            if(memory == 0) { // perfect match, last line is already at the correct position
+                #emit pop.pri // just free entry
+            } else { // imperfect match, shift last line forward but creates unused cells
+                #emit pop.pri // lower allocation if possible (only if you used 3 or more character as seperator)
+                #emit stor.s.pri seperator
+
+                dest[0] = EOS;
+                // strcat because we don't know the overall size, also to finish the string with EOS
+                strcat(dest, seperator, cellmax);
+            }
+        }
+    } else { // put everything into dest
+        new added;
+
+        dest[0] = EOS;
+        memory = count;
+
+        while(memory--) { // because we will overwrite the indices
+            #emit load.s.alt entries
+            #emit load.s.pri memory
             #emit idxaddr
             #emit move.alt
             #emit load.i
             #emit add // dest
             #emit push.pri
+            #emit push.s seperator
         }
-        sepLength <<= 2;
+        #emit pop.pri // ignore first seperator
 
-        #emit load.s.pri seperator
-        #emit stor.s.pri lines
+        memory = buffer - 1; // 1 cell is taken by EOS
+        count = count * 2 - 1;
 
-        while(--size) { // pop entries, frist to last
+        while(count--) {
             #emit pop.pri
             #emit stor.s.pri seperator
-            #emit pop.alt
-            #emit sub.alt
-            #emit add.c 0xFFFFFFFC // -4
-            #emit stor.s.pri length
-            #emit push.alt
-            // memcpy fails with cellmax as maxlength so I push length twice
-            memcpy(base, seperator, 0, length, length);
 
-            #emit load.s.pri base
-            #emit load.s.alt length
-            #emit add
-            #emit stor.s.pri base
-            #emit load.s.pri lines
-            #emit stor.s.pri seperator
+            memory -= (added = strcat(dest, seperator, buffer));
 
-            memcpy(base, seperator, 0, sepLength, sepLength);
+            if(memory == 0) { // no more memory available
+                memory = added - strlen(seperator); // subtract missing characters
 
-            #emit load.s.pri base
-            #emit load.s.alt sepLength
-            #emit add
-            #emit stor.s.pri base
-        }
-        if(memory == 0) { // perfect match, last line is already at the correct position
-            #emit pop.pri // just free entry
-        } else { // imperfect match, shift last line forward but creates unused cells
-            #emit pop.pri // lower allocation if possible (only if you used 3 or more character as seperator)
-            #emit stor.s.pri seperator
+                while(count--) { // count missing space
+                    #emit pop.pri
+                    #emit stor.s.pri seperator
 
-            base[0] = EOS;
-            // strcat because we don't know the overall size, also to finish the string with EOS
-            strcat(base, seperator, cellmax);
+                    memory -= strlen(seperator);
+                }
+                break;
+            }
         }
     }
     return memory;

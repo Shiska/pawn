@@ -6,19 +6,23 @@
 #include "strjoin"
 
 new global[] = {}; // empty array (0 cells)
-new globalEntries[][] = {
-    "a", "b", "c"
+new globalEntries[][3] = {
+    "a", "bc", "d"
 };
 
 Test:Run() {
-    ASSERT(strjoin(global, globalEntries, ", ") == 1); // 1 unused cell remaining
-    ASSERT(strcmp(global, "a, b, c", false) == 0);
-
+    new def[16]; // default behavior, just put everything into dest
     new localEntries[][] = {
-        "a", "b", "c"
-    }; // oder must be reversed, lines first base second
-    new local[1] = {}; // local array need to have at least 1 cell
+        "a", "bc", "d"
+    }; // oder must be reversed, entries first dest second
+    new local[1]; // local array need to have at least 1 cell
 
-    ASSERT(strjoin(local, localEntries, ", ") == 2); // 2 unused cells remaining
-    ASSERT(strcmp(local, "a, b, c", false) == 0);
+    ASSERT(strjoin(def, localEntries, ", ") == 7); // 7 unused cells remaining
+    ASSERT(strcmp(def, "a, bc, d", false) == 0);
+
+    ASSERT(strjoin(local, localEntries, ", ", cellmax) == 2); // 2 unused cells remaining
+    ASSERT(strcmp(local, "a, bc, d", false) == 0);
+
+    ASSERT(strjoin(global, globalEntries, ", ", cellmax) == 1); // 1 unused cell remaining
+    ASSERT(strcmp(global, "a, bc, d", false) == 0);
 }
