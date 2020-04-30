@@ -1,6 +1,6 @@
 # CountingSort
 
-[![sampctl](https://shields.southcla.ws/badge/sampctl-CountingSort-2f2f2f.svg?style=for-the-badge)](https://github.com/Shiska/pawn/tree/countingsort)
+[![sampctl](https://img.shields.io/badge/sampctl-CountingSort-2f2f2f.svg?style=for-the-badge)](https://github.com/Shiska/pawn/tree/countingsort)
 
 ## Installation
 
