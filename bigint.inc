@@ -189,78 +189,117 @@ stock BigIntPrint(address) {
 }
 
 stock BigIntAdd(oper1, oper2) {
-    #pragma unused oper2
+    printf("BigIntAdd(%d, %d)", oper1, oper2);
 
-    // TODO: test access to freed variables
-    // TODO: maybe reuse existing allocated heap
+    if(oper1 && oper2) {
+        new size1 = BigIntGetSize(oper1);
+        new size2 = BigIntGetSize(oper2);
+        // switch operators if oper1 is smaller than oper2
+        if(size1 < size2) {
+            // switch sizes
+            #emit load.s.pri size1
+            #emit load.s.alt size2
+            #emit stor.s.pri size2
+            #emit stor.s.alt size1
+            // switch operators
+            #emit load.s.pri oper1
+            #emit load.s.alt oper2
+            #emit stor.s.pri oper2
+            #emit stor.s.alt oper1
+        }
+        new result = BigIntAlloc(size1 + 1);
+        new addr = result + 2;
 
-    printf("BigIntResult: BigIntAdd(BigIntResult: %d, BigIntResult: %d)", oper1, oper2);
-
-    new size1 = BigIntGetSize(oper1);
-    new size2 = BigIntGetSize(oper2);
-    // switch operators if oper1 is smaller than oper2
-    if(size1 < size2) {
-        // switch sizes
-        #emit load.s.pri size1
-        #emit load.s.alt size2
-        #emit stor.s.pri size2
-        #emit stor.s.alt size1
-        // switch operators
-        #emit load.s.pri oper1
-        #emit load.s.alt oper2
-        #emit stor.s.pri oper2
-        #emit stor.s.alt oper1
-    }
-    new result = BigIntAlloc(size1 + 1);
-    new addr = result + 2;
-
-    BigIntPrint(_: oper1);
-    BigIntPrint(_: oper2);
-
-    oper1 += 2;
-    oper2 += 2;
-    // add both values together
-    for(new i, j = size2 * 2 - 1; i != j; ++i) {
-        #emit load.s.pri oper1
-        #emit lodb.i 2
-        #emit move.alt
-        #emit load.s.pri oper2
-        #emit lodb.i 2
-        #emit add
-        #emit lref.s.alt addr
-        #emit add
-        #emit sref.s.pri addr
-
-        printf("    adding addresses (%d + %d + %d)", oper1, oper2, addr);
+        BigIntPrint(_: oper1);
+        BigIntPrint(_: oper2);
 
         oper1 += 2;
         oper2 += 2;
-        addr += 2;
+        // add both values together
+        for(new i = 1, j = size2 * 2; i != j; ++i) {
+            #emit load.s.pri oper1
+            #emit lodb.i 2
+            #emit move.alt
+            #emit load.s.pri oper2
+            #emit lodb.i 2
+            #emit add
+            #emit lref.s.alt addr
+            #emit add
+            #emit sref.s.pri addr
+
+            printf("    adding addresses (%d + %d + %d)", oper1, oper2, addr);
+
+            oper1 += 2;
+            oper2 += 2;
+            addr += 2;
+        }
+        // add missing bytes from bigger operator
+        for(new i, j = (size1 - size2) * 2; i != j; ++i) {
+            #emit load.s.pri oper1
+            #emit lodb.i 2
+            #emit lref.s.alt addr
+            #emit add
+            #emit sref.s.pri addr
+
+            printf("    adding addresses (%d + %d)", oper1, addr);
+
+            oper1 += 2;
+            addr += 2;
+        }
+        BigIntPrint(result);
+        BigIntTrim(result);
+
+        return result;
     }
-    // add missing bytes from bigger operator
-    for(new i, j = (size1 - size2) * 2; i != j; ++i) {
-        #emit load.s.pri oper1
-        #emit lodb.i 2
-        #emit lref.s.alt addr
-        #emit add
-        #emit sref.s.pri addr
+    return 0;
+}
 
-        printf("    adding addresses (%d + %d)", oper1, addr);
+stock BigIntNeg(oper) { //inplace
+    printf("BigIntNeg(%d)", oper);
 
-        oper1 += 2;
-        addr += 2;
+    if(oper) {
+        new size = BigIntGetSize(oper);
+        new addr = oper + 2;
+
+        BigIntPrint(oper);
+        // invert every cell
+        for(new i; i != size; ++i) {
+            #emit lref.s.pri addr
+            #emit invert
+            #emit sref.s.pri addr
+
+            addr += 4;
+        }
+        // restore inverted size
+        BigIntSetSize(oper, size);
+
+        addr = oper + 2;
+        // add one
+        for(new i = 1, value; value == 0; ++i, addr += 4) {
+            if(i == size) {
+                #emit load.s.pri addr
+                #emit move.alt
+                #emit lodb.i 2
+                #emit add.c 1
+                #emit strb.i 2
+
+                break;
+            } else {
+                #emit lref.s.pri addr
+                #emit add.c 1
+                #emit sref.s.pri addr
+                #emit stor.s.pri value
+            }                
+        }
+        BigIntPrint(oper);
+
+        return oper;
     }
-    BigIntPrint(result);
-    BigIntTrim(result);
-
-    return result;
+    return 0;
 }
 
 stock operator~(BigInt: oper[], size) {
     #pragma unused size
-
-    // #emit lref.s.pri oper
-    // #emit stor.s.pri oper
 
     printf("operator~(BigInt: %d, %d)", _: oper[0], size);
 
@@ -337,7 +376,7 @@ stock BigIntResult: operator+(BigInt: oper1, BigIntResult: oper2) {
     #emit stack 12
     #emit retn
 
-	return BigIntResult: 0;
+    return BigIntResult: 0;
 }
 
 stock BigIntResult: operator+(BigInt: oper1, BigInt: oper2) {
@@ -376,6 +415,28 @@ stock BigIntResult: operator+(BigIntResult: oper1, oper2) {
     return BigIntResult: 0;
 }
 
+stock BigIntResult: operator-(BigIntResult: oper) {
+    printf("BigIntResult: operator-(BigIntResult: %d)", _: oper);
+    // faster than calling the function
+    #emit const.pri BigIntNeg
+    #emit add.c 4
+    #emit sctrl 6
+
+    return BigIntResult: 0;    
+}
+
+stock BigIntResult: operator-(BigInt: oper) {
+    printf("BigIntResult: operator-(BigInt: %d)", _: oper);
+
+    BigIntNeg(BigIntCopy(_: oper));
+    // avoid destructor of BigInt
+    #emit retn
+
+    return BigIntResult: 0;    
+}
+
+// always use cBigInt for variables otherwise you could overwrite an initialized variable
+// resulting that the deconstructor, for the overwritten variable, isn't called anymore, thus creating a leak in the heap
 #define cBigInt: const BigInt:
 // pass BigInt object as reference otherwise it would call the copy constructor
 stock BigIntGetValues(const & BigInt: address, dest[], const size = sizeof dest) {
@@ -389,14 +450,7 @@ stock BigIntGetValues(const & BigInt: address, dest[], const size = sizeof dest)
 
         BigIntPrint(_: address);
 
-        raw_memcpy(destaddr, _: address + 2, 0, BigIntGetSize(_: address) * 4 - 2, size);
-
-        #emit stack 4
-        #emit retn
+        return raw_memcpy(destaddr, _: address + 2, 0, BigIntGetSize(_: address) * 4 - 2, size);
     }
-    // avoid destructor of BigInt
-    #emit zero.pri
-    #emit retn
-
     return 0;
 }

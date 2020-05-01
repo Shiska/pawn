@@ -7,16 +7,18 @@
 
 Test:Run() {
     new cBigInt: int1 = 2147483647;
-    new cBigInt: int2 = int1 + int1 + int1 + int1;
+    new cBigInt: int2 = -(int1 + int1 + int1 + int1); // -8589934588‬
+    new cBigInt: int3 = -int2; // 8589934588‬
 
     new data[2];
 
     BigIntGetValues(int2, data);
 
+    ASSERT(data[0] == 4);
+    ASSERT(data[1] == 65534);
+
+    BigIntGetValues(int3, data);
+
     ASSERT(data[0] == -4);
     ASSERT(data[1] == 1);
-
-    for(new i; i < sizeof data; ++i) {
-        printf("data[%02d] %032b %d", i, data[i], data[i]);
-    }
 }
