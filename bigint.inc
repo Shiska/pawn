@@ -59,10 +59,14 @@ stock HeapFree(cells) {
     return 0;
 }
 
+enum BigIntFlags (<<= 1) {
+    bool: BigIntIsNeg = 1
+}
+
 stock BigIntAlloc(cells) {
     printf("BigIntAlloc(%d)", cells);
 
-    if((1 << (cellbits / 2)) > cells > 0) {
+    if(256 > cells > 0) {
         new address = HeapAlloc(cells);
 
         raw_memset(address, cells, 0);
@@ -71,6 +75,44 @@ stock BigIntAlloc(cells) {
         return address;
     }
     return 0;
+}
+
+stock BigIntFromInt(integer) {
+    printf("BigIntFromInt(%d)", integer);
+
+    new cellhigh = integer & 0xFFFF0000;
+    new bool: isneg = integer < 0;
+
+    new cells = (cellhigh == 0 || cellhigh == 0xFFFF0000) ? 1 : 2;
+    new int = BigIntAlloc(cells);
+
+    if(isneg) {
+        BigIntSetFlags(int, BigIntIsNeg);
+    }
+    if(cells == 1) {
+        #emit load.s.pri int
+        #emit add.c 2
+        #emit move.alt
+        #emit load.s.pri integer
+        #emit strb.i 2
+    } else {
+        #emit load.s.pri int
+        #emit add.c 2
+        #emit move.alt
+        #emit load.s.pri integer
+        #emit stor.i
+
+        if(isneg) { // fill negative number with 1s
+            #emit load.s.pri int
+            #emit add.c 6
+            #emit move.alt
+            #emit const.pri 0xFFFF
+            #emit strb.i 2
+        }
+    }
+    BigIntPrint(int);
+
+    return int;
 }
 
 stock BigIntCopy(address) {
@@ -108,7 +150,7 @@ stock BigIntSetSize(address, cells) {
     if(address) {
         #emit load.s.pri cells
         #emit load.s.alt address
-        #emit strb.i 2
+        #emit strb.i 1
         #emit retn
     }
     return false;
@@ -119,10 +161,36 @@ stock BigIntGetSize(address) {
 
     if(address) {
         #emit load.s.pri address
-        #emit lodb.i 2
+        #emit lodb.i 1
         #emit retn
     } {}
     return false;
+}
+
+stock BigIntSetFlags(address, BigIntFlags: flags) {
+    printf("BigIntSetFlags(%d, %08b)", address, _: flags);
+
+    if(address) {
+        #emit load.s.pri address
+        #emit add.c 1
+        #emit move.alt
+        #emit load.s.pri flags
+        #emit strb.i 1
+        #emit retn
+    }
+    return false;
+}
+
+stock BigIntFlags: BigIntGetFlags(address) {
+    printf("BigIntGetFlags(%d)", address);
+
+    if(address) {
+        #emit load.s.pri address
+        #emit add.c 1
+        #emit lodb.i 1
+        #emit retn
+    } {}
+    return BigIntFlags: 0;
 }
 
 // removes empty cells at the end
@@ -132,6 +200,7 @@ stock BigIntTrim(address) {
 
     if(address) {
         new size = BigIntGetSize(address), value, addr;
+        new checkfor = (BigIntGetFlags(address) & BigIntIsNeg) ? -1 : 0;
 
         #emit load.s.alt address
         #emit load.s.pri size
@@ -148,7 +217,7 @@ stock BigIntTrim(address) {
 
             printf("    addr %d value %d", addr, value);
 
-            if(value) {
+            if(value != checkfor) {
                 break;
             }
             newsize--;
@@ -168,7 +237,7 @@ stock BigIntPrint(address) {
     if(address) {
         new size = BigIntGetSize(address), value;
 
-        printf("    size %d", size);
+        printf("    size %d flags %08b", size, _: BigIntGetFlags(address));
 
         address += 2;
 
@@ -176,7 +245,7 @@ stock BigIntPrint(address) {
             #emit lref.s.pri address
             #emit stor.s.pri value
 
-            printf("    addr %10d value %10d %032b", address, value, value);
+            printf("    addr %10d value %s%10d %032b", address, (value >= 0) ? "+" : "", value, value);
 
             address += 4;
         }
@@ -184,7 +253,7 @@ stock BigIntPrint(address) {
         #emit lodb.i 2
         #emit stor.s.pri value
 
-        printf("    addr %10d value %10d %016b", address, value, value);
+        printf("    addr %10d value %s%10d %016b", address, (value >= 0) ? "+" : "", value, value);
     }
 }
 
@@ -207,6 +276,8 @@ stock BigIntAdd(oper1, oper2) {
             #emit stor.s.pri oper2
             #emit stor.s.alt oper1
         }
+        new bool: isneg1 = bool: (BigIntGetFlags(oper1) & BigIntIsNeg);
+        new bool: isneg2 = bool: (BigIntGetFlags(oper2) & BigIntIsNeg);
         new result = BigIntAlloc(size1 + 1);
         new addr = result + 2;
 
@@ -228,26 +299,62 @@ stock BigIntAdd(oper1, oper2) {
             #emit sref.s.pri addr
 
             printf("    adding addresses (%d + %d + %d)", oper1, oper2, addr);
+            BigIntPrint(result);
 
             oper1 += 2;
             oper2 += 2;
             addr += 2;
         }
+        new substitute = isneg2 ? 0xFFFF : 0;
         // add missing bytes from bigger operator
         for(new i, j = (size1 - size2) * 2; i != j; ++i) {
             #emit load.s.pri oper1
             #emit lodb.i 2
+            #emit move.alt
+            #emit load.s.pri substitute
+            #emit add
             #emit lref.s.alt addr
             #emit add
             #emit sref.s.pri addr
 
             printf("    adding addresses (%d + %d)", oper1, addr);
+            BigIntPrint(result);
 
             oper1 += 2;
             addr += 2;
         }
+        // check if still negative
+        if(isneg1 || isneg2) {
+            new bool: isneg;
+
+            if(isneg1 && isneg2) { // obvious
+                isneg = true;
+            } else if(size1 == size2) { // size match, one positive one negative number
+                // check for carrier bit
+                #emit lref.s.pri addr
+                #emit stor.s.pri isneg
+                // if there is a carrier bit the negative number is no more
+                if(isneg == false) { // so if there isn't it is still negative
+                    isneg = true;
+                } else {
+                    isneg = false;
+                    // clear carrier bit
+                    #emit zero.pri
+                    #emit sref.s.pri addr
+                }
+            } else { // oper1 is bigger so it stays negative / positive
+                isneg = isneg1;
+            }
+            if(isneg) {
+                BigIntSetFlags(result, BigIntIsNeg);
+                // fill cells with 1s
+                #emit const.pri 0xFFFFFFFF
+                #emit sref.s.pri addr
+            }
+        }
         BigIntPrint(result);
         BigIntTrim(result);
+        BigIntPrint(result);
 
         return result;
     }
@@ -291,6 +398,7 @@ stock BigIntNeg(oper) { //inplace
                 #emit stor.s.pri value
             }                
         }
+        BigIntSetFlags(oper, BigIntGetFlags(oper) ^ BigIntIsNeg);
         BigIntPrint(oper);
 
         return oper;
@@ -309,30 +417,16 @@ stock operator~(BigInt: oper[], size) {
 stock BigInt: operator=(oper) {
     printf("BigInt: operator=(%d)", oper);
 
-    new cells = (oper < (1 << (cellbits / 2))) ? 1 : 2;
-    new int = BigIntAlloc(cells);
+    #emit const.pri BigIntFromInt
+    #emit add.c 4
+    #emit sctrl 6
 
-    if(cells == 1) {
-        #emit load.s.pri int
-        #emit add.c 2
-        #emit move.alt
-        #emit load.s.pri oper
-        #emit strb.i 2
-    } else {
-        #emit load.s.pri int
-        #emit add.c 2
-        #emit move.alt
-        #emit load.s.pri oper
-        #emit stor.i
-    }
-    BigIntPrint(int);
-
-    return BigInt: int;
+    return BigInt: 0;
 }
 
 stock BigInt: operator=(BigIntResult: oper) {
     printf("BigInt: operator=(BigIntResult: %d)", _: oper);
-
+    // pass through, just to avoid tag mistake
     return BigInt: oper;
 }
 
@@ -349,15 +443,13 @@ stock BigInt: operator=(BigInt: oper) {
 stock BigIntResult: operator+(BigIntResult: oper1, BigIntResult: oper2) {
     printf("BigIntResult: operator+(BigIntResult: %d BigIntResult: %d)", _: oper1, _: oper2);
 
+    new dest = (_: oper1 < _: oper2) ? (_: oper1) : (_: oper2); // first address
+    new free_size = BigIntGetSize(_: oper1) + BigIntGetSize(_: oper2);
     new result = BigIntAdd(_: oper1, _: oper2);
     new result_size = BigIntGetSize(result);
-    new oper1_size = BigIntGetSize(_: oper1);
-    new oper2_size = BigIntGetSize(_: oper2);
-
-    new dest = _: ((oper1 < oper2) ? oper1 : oper2);
 
     raw_memcpy(dest, result, 0, result_size * 4, result_size);
-    HeapFree(oper1_size + oper2_size);
+    HeapFree(free_size);
 
     return BigIntResult: dest;
 }
@@ -392,11 +484,8 @@ stock BigIntResult: operator+(BigInt: oper1, BigInt: oper2) {
 stock BigIntResult: operator+(BigInt: oper1, oper2) {
     printf("BigIntResult: operator+(BigInt: %d, %d)", _: oper1, _: oper2);
 
-    new const BigInt: int = oper2;
-    new BigIntResult: result = oper1 + BigIntResult: int;
+    oper2 = _: (oper1 + BigIntResult: BigIntFromInt(oper2));
     // avoid destructor of BigInt
-    #emit load.s.pri result
-    #emit stack 8
     #emit retn
 
     return BigIntResult: 0;
@@ -405,14 +494,7 @@ stock BigIntResult: operator+(BigInt: oper1, oper2) {
 stock BigIntResult: operator+(BigIntResult: oper1, oper2) {
     printf("BigIntResult: operator+(BigIntResult: %d, %d)", _: oper1, _: oper2);
 
-    new const BigInt: int = oper2;
-    new BigIntResult: result = oper1 + BigIntResult: int;
-    // avoid destructor of BigInt
-    #emit load.s.pri result
-    #emit stack 8
-    #emit retn
-
-    return BigIntResult: 0;
+    return oper1 + BigIntResult: BigIntFromInt(oper2);
 }
 
 stock BigIntResult: operator-(BigIntResult: oper) {
@@ -428,11 +510,81 @@ stock BigIntResult: operator-(BigIntResult: oper) {
 stock BigIntResult: operator-(BigInt: oper) {
     printf("BigIntResult: operator-(BigInt: %d)", _: oper);
 
-    BigIntNeg(BigIntCopy(_: oper));
+    (_: oper) = BigIntCopy(_: oper);
+    // avoid destructor of BigInt
+    #emit const.pri BigIntNeg
+    #emit add.c 4
+    #emit sctrl 6
+
+    return BigIntResult: 0;    
+}
+
+stock BigIntResult: operator-(BigIntResult: oper1, BigIntResult: oper2) {
+    printf("BigIntResult: operator-(BigIntResult: %d BigIntResult: %d)", _: oper1, _: oper2);
+
+    return oper1 + BigIntResult: BigIntNeg(_: oper2);
+}
+
+stock BigIntResult: operator-(BigInt: oper1, BigIntResult: oper2) {
+    printf("BigIntResult: operator-(BigInt: %d BigIntResult: %d)", _: oper1, _: oper2);
+
+    oper2 = oper1 + BigIntResult: BigIntNeg(_: oper2);
     // avoid destructor of BigInt
     #emit retn
 
-    return BigIntResult: 0;    
+    return BigIntResult: 0;
+}
+
+stock BigIntResult: operator-(BigIntResult: oper1, BigInt: oper2) {
+    printf("BigIntResult: operator-(BigIntResult: %d BigInt: %d)", _: oper1, _: oper2);
+
+    oper1 = oper1 + BigIntResult: BigIntNeg(BigIntCopy(_: oper2));
+    // avoid destructor of BigInt
+    #emit retn
+
+    return BigIntResult: 0;
+}
+
+stock BigIntResult: operator-(BigInt: oper1, BigInt: oper2) {
+    printf("BigIntResult: operator-(BigInt: %d BigInt: %d)", _: oper1, _: oper2);
+
+    (_: oper1) = _: (oper1 + BigIntResult: BigIntNeg(BigIntCopy(_: oper2)));
+    // avoid destructor of BigInt
+    #emit retn
+
+    return BigIntResult: 0;
+}
+
+stock BigIntResult: operator-(BigInt: oper1, oper2) {
+    printf("BigIntResult: operator-(BigInt: %d, %d)", _: oper1, _: oper2);
+
+    oper2 = _: (oper1 + BigIntResult: BigIntFromInt(-oper2));
+    // avoid destructor of BigInt
+    #emit retn
+
+    return BigIntResult: 0;
+}
+
+stock BigIntResult: operator-(oper1, BigInt: oper2) {
+    printf("BigIntResult: operator-(%d, BigInt: %d)", _: oper1, _: oper2);
+
+    oper1 = _: (oper1 + BigIntResult: BigIntNeg(BigIntCopy(_: oper2)));
+    // avoid destructor of BigInt
+    #emit retn
+
+    return BigIntResult: 0;
+}
+
+stock BigIntResult: operator-(BigIntResult: oper1, oper2) {
+    printf("BigIntResult: operator-(BigIntResult: %d, %d)", _: oper1, _: oper2);
+
+    return  oper1 + BigIntResult: BigIntFromInt(-oper2);
+}
+
+stock BigIntResult: operator-(oper1, BigIntResult: oper2) {
+    printf("BigIntResult: operator-(%d, BigIntResult: %d)", _: oper1, _: oper2);
+
+    return oper1 + BigIntResult: BigIntNeg(_: oper2);
 }
 
 // always use cBigInt for variables otherwise you could overwrite an initialized variable
