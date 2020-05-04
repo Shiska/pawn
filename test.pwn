@@ -31,6 +31,13 @@ TestInit:Run() { // call all operators at least once
     // BigIntResult: operator-(BigIntResult: oper1, oper2)                  - result - 30
     // BigIntResult: operator-(oper1, BigIntResult: oper2)                  - 40 - result
     new cBigInt: int5 = (int3 - (int1 - 10)) - ((int1 - int2) - int4) - (40 - ((20 - int3) - 30));
+    // multiplication
+    // BigIntResult: operator*(BigInt: oper1, oper2)                        - int * 10
+    // BigIntResult: operator*(BigInt: oper1, BigInt: oper2)                - int * int
+    // BigIntResult: operator*(BigInt: oper1, BigIntResult: oper2)          - result * int
+    // BigIntResult: operator*(BigIntResult: oper1, oper2)                  - result * 5
+    // BigIntResult: operator*(BigIntResult: oper1, BigIntResult: oper2)    - result * result
+    new cBigInt: int6 = (int1 * 10) * (int1 * int2 * int2) * 5; // 31250
     // destructor
     // operator~(BigInt: oper[], size)
 }
@@ -50,11 +57,25 @@ Test:Run() {
     BigIntGetValues(int3, data);
 
     ASSERT(data[0] == 4);
-    ASSERT(data[1] == 65534);
+    ASSERT(data[1] == -2);
 
     new cBigInt: int4 = int3 - int1 - int1 - int1 - int1 - int1; // 2147483647
 
     BigIntGetValues(int4, data);
 
     ASSERT(data[0] == 2147483647);
+
+    new cBigInt: int5 = int1 * 4; // -8589934588‬
+
+    BigIntGetValues(int5, data);
+
+    ASSERT(data[0] == 4);
+    ASSERT(data[1] == -2);
+
+    new cBigInt: int6 = int1 * -4; // 8589934588‬
+
+    BigIntGetValues(int6, data);
+
+    ASSERT(data[0] == -4);
+    ASSERT(data[1] == 1);
 }

@@ -80,10 +80,12 @@ stock BigIntAlloc(cells) {
 stock BigIntFromInt(integer) {
     printf("BigIntFromInt(%d)", integer);
 
-    new cellhigh = integer & 0xFFFF0000;
     new bool: isneg = integer < 0;
 
-    new cells = (cellhigh == 0 || cellhigh == 0xFFFF0000) ? 1 : 2;
+    if(isneg) {
+        integer *= -1;
+    }
+    new cells = (integer & 0xFFFF0000) ? 2 : 1;
     new int = BigIntAlloc(cells);
 
     if(isneg) {
@@ -101,14 +103,6 @@ stock BigIntFromInt(integer) {
         #emit move.alt
         #emit load.s.pri integer
         #emit stor.i
-
-        if(isneg) { // fill negative number with 1s
-            #emit load.s.pri int
-            #emit add.c 6
-            #emit move.alt
-            #emit const.pri 0xFFFF
-            #emit strb.i 2
-        }
     }
     BigIntPrint(int);
 
@@ -121,15 +115,9 @@ stock BigIntCopy(address) {
     if(address) {
         new size = BigIntGetSize(address);
         new copy = BigIntAlloc(size);
-        new cpyaddr = copy;
 
-        for(new i; i < size; ++i) {
-            #emit lref.s.pri address
-            #emit sref.s.pri cpyaddr
+        raw_memcpy(copy, address, 0, size * 4, size);
 
-            address += 4;
-            cpyaddr += 4;
-        }
         return copy;
     }
     return 0;
@@ -200,7 +188,6 @@ stock BigIntTrim(address) {
 
     if(address) {
         new size = BigIntGetSize(address), value, addr;
-        new checkfor = (BigIntGetFlags(address) & BigIntIsNeg) ? -1 : 0;
 
         #emit load.s.alt address
         #emit load.s.pri size
@@ -217,7 +204,7 @@ stock BigIntTrim(address) {
 
             printf("    addr %d value %d", addr, value);
 
-            if(value != checkfor) {
+            if(value) {
                 break;
             }
             newsize--;
@@ -236,8 +223,9 @@ stock BigIntPrint(address) {
 
     if(address) {
         new size = BigIntGetSize(address), value;
+        new BigIntFlags: flags = BigIntGetFlags(address);
 
-        printf("    size %d flags %08b", size, _: BigIntGetFlags(address));
+        printf("    size %d flags %08b", size, _: flags);
 
         address += 2;
 
@@ -253,10 +241,30 @@ stock BigIntPrint(address) {
         #emit lodb.i 2
         #emit stor.s.pri value
 
-        printf("    addr %10d value %s%10d %016b", address, (value >= 0) ? "+" : "", value, value);
+        printf("    addr %10d value %s%10d %032b", address, (value >= 0) ? "+" : "", value, value);
+
     }
 }
 
+stock BigIntAddSub(oper1, oper2) {
+    printf("BigIntAddSub(%d, %d)", oper1, oper2);
+
+    if(oper1 && oper2) {
+        new bool: isneg1 = bool: (BigIntGetFlags(oper1) & BigIntIsNeg);
+        new bool: isneg2 = bool: (BigIntGetFlags(oper2) & BigIntIsNeg);
+
+        if(isneg1 ^ isneg2) {
+            if(isneg1) {
+                return BigIntSub(oper2, oper1);
+            }
+            return BigIntSub(oper1, oper2);
+        }
+        return BigIntAdd(oper1, oper2);
+    }
+    return 0;
+}
+
+// gets called for two positive or two negative numbers
 stock BigIntAdd(oper1, oper2) {
     printf("BigIntAdd(%d, %d)", oper1, oper2);
 
@@ -276,11 +284,12 @@ stock BigIntAdd(oper1, oper2) {
             #emit stor.s.pri oper2
             #emit stor.s.alt oper1
         }
-        new bool: isneg1 = bool: (BigIntGetFlags(oper1) & BigIntIsNeg);
-        new bool: isneg2 = bool: (BigIntGetFlags(oper2) & BigIntIsNeg);
         new result = BigIntAlloc(size1 + 1);
         new addr = result + 2;
 
+        if(BigIntGetFlags(oper1) & BigIntIsNeg) { // if any oper is negative result is negative
+            BigIntSetFlags(result, BigIntIsNeg);
+        }
         BigIntPrint(_: oper1);
         BigIntPrint(_: oper2);
 
@@ -305,14 +314,10 @@ stock BigIntAdd(oper1, oper2) {
             oper2 += 2;
             addr += 2;
         }
-        new substitute = isneg2 ? 0xFFFF : 0;
         // add missing bytes from bigger operator
         for(new i, j = (size1 - size2) * 2; i != j; ++i) {
             #emit load.s.pri oper1
             #emit lodb.i 2
-            #emit move.alt
-            #emit load.s.pri substitute
-            #emit add
             #emit lref.s.alt addr
             #emit add
             #emit sref.s.pri addr
@@ -323,34 +328,100 @@ stock BigIntAdd(oper1, oper2) {
             oper1 += 2;
             addr += 2;
         }
-        // check if still negative
-        if(isneg1 || isneg2) {
-            new bool: isneg;
+        BigIntPrint(result);
+        BigIntTrim(result);
+        BigIntPrint(result);
 
-            if(isneg1 && isneg2) { // obvious
-                isneg = true;
-            } else if(size1 == size2) { // size match, one positive one negative number
-                // check for carrier bit
-                #emit lref.s.pri addr
-                #emit stor.s.pri isneg
-                // if there is a carrier bit the negative number is no more
-                if(isneg == false) { // so if there isn't it is still negative
-                    isneg = true;
-                } else {
-                    isneg = false;
-                    // clear carrier bit
-                    #emit zero.pri
-                    #emit sref.s.pri addr
-                }
-            } else { // oper1 is bigger so it stays negative / positive
-                isneg = isneg1;
-            }
-            if(isneg) {
-                BigIntSetFlags(result, BigIntIsNeg);
-                // fill cells with 1s
-                #emit const.pri 0xFFFFFFFF
+        return result;
+    }
+    return 0;
+}
+
+// gets called for one positive (oper1) and one negative (oper2) number
+stock BigIntSub(oper1, oper2) {
+    printf("BigIntSub(%d, %d)", oper1, oper2);
+
+    if(oper1 && oper2) {
+        new size1 = BigIntGetSize(oper1);
+        new size2 = BigIntGetSize(oper2);
+        new minsize, maxsize, maxoper;
+
+        if(size1 < size2) {
+            minsize = size1;
+            maxsize = size2;
+            maxoper = oper2;
+        } else {
+            minsize = size2;
+            maxsize = size1;
+            maxoper = oper1;
+        }
+        new result = BigIntAlloc(maxsize);
+        new addr = result + 2;
+
+        BigIntPrint(_: oper1);
+        BigIntPrint(_: oper2);
+
+        new i = 1;
+        new carry = 0;
+
+        oper1 += 2;
+        oper2 += 2;
+        // compute first half cell
+        #emit load.s.pri oper1
+        #emit lodb.i 2
+        #emit move.alt
+        #emit load.s.pri oper2
+        #emit lodb.i 2
+        #emit sub.alt
+        #emit load.s.alt addr
+        #emit strb.i 2
+        #emit shr.c.pri 31
+        #emit stor.s.pri carry
+
+        oper1 += 2;
+        oper2 += 2;
+        addr += 2;
+        // substract remaining cells
+        while(i != minsize) {
+            #emit lref.s.pri oper1
+            #emit lref.s.alt oper2
+            #emit sub
+            #emit load.s.alt carry
+            #emit sub
+            #emit sref.s.pri addr
+            #emit shr.c.pri 31
+            #emit stor.s.pri carry
+
+            printf("    adding addresses (%d + %d + %d)", oper1, oper2, addr);
+            BigIntPrint(result);
+
+            oper1 += 4;
+            oper2 += 4;
+            addr += 4;
+            i++;
+        }
+        // add missing bytes from bigger operator
+        if(minsize != maxsize) {
+            maxoper += i * 4;
+
+            while(i != maxsize) {
+                #emit lref.s.pri maxoper
+                #emit load.s.alt carry
+                #emit sub
                 #emit sref.s.pri addr
+                #emit shr.c.pri 31
+                #emit stor.s.pri carry
+
+                printf("    adding addresses (%d + %d)", oper1, addr);
+                BigIntPrint(result);
+
+                maxoper += 4;
+                addr += 4;
+                i++;
             }
+        }
+        if(carry) {
+            BigIntNeg(result);
         }
         BigIntPrint(result);
         BigIntTrim(result);
@@ -361,7 +432,7 @@ stock BigIntAdd(oper1, oper2) {
     return 0;
 }
 
-stock BigIntNeg(oper) { //inplace
+stock BigIntNeg(oper) { // inplace
     printf("BigIntNeg(%d)", oper);
 
     if(oper) {
@@ -370,18 +441,21 @@ stock BigIntNeg(oper) { //inplace
 
         BigIntPrint(oper);
         // invert every cell
-        for(new i; i != size; ++i) {
+        for(new i = 1; i != size; ++i) {
             #emit lref.s.pri addr
             #emit invert
             #emit sref.s.pri addr
 
             addr += 4;
         }
-        // restore inverted size
-        BigIntSetSize(oper, size);
-
-        addr = oper + 2;
+        #emit load.s.pri addr
+        #emit move.alt
+        #emit lodb.i 2
+        #emit invert
+        #emit strb.i 2
         // add one
+        addr = oper + 2;
+
         for(new i = 1, value; value == 0; ++i, addr += 4) {
             if(i == size) {
                 #emit load.s.pri addr
@@ -402,6 +476,102 @@ stock BigIntNeg(oper) { //inplace
         BigIntPrint(oper);
 
         return oper;
+    }
+    return 0;
+}
+
+stock BigIntNegFlag(oper) {
+    printf("BigIntNegFlag(%d)", oper);
+
+    if(oper) {
+        BigIntSetFlags(oper, BigIntGetFlags(oper) ^ BigIntIsNeg);
+
+        return oper;
+    }
+    return 0;
+}
+
+stock BigIntMul(oper1, oper2) {
+    printf("BigIntMul(%d, %d)", oper1, oper2);
+
+    if(oper1 && oper2) {
+        new size1 = BigIntGetSize(oper1);
+        new size2 = BigIntGetSize(oper2);
+        // switch operators if oper1 is smaller than oper2
+        if(size1 < size2) {
+            // switch sizes
+            #emit load.s.pri size1
+            #emit load.s.alt size2
+            #emit stor.s.pri size2
+            #emit stor.s.alt size1
+            // switch operators
+            #emit load.s.pri oper1
+            #emit load.s.alt oper2
+            #emit stor.s.pri oper2
+            #emit stor.s.alt oper1
+        }
+        new result = BigIntAlloc(size1 + size2);
+
+        if((BigIntGetFlags(oper1) & BigIntIsNeg) ^ (BigIntGetFlags(oper2) & BigIntIsNeg)) {
+            BigIntSetFlags(result, BigIntIsNeg);
+        }
+        BigIntPrint(_: oper1);
+        BigIntPrint(_: oper2);
+
+        new carry, value2;
+        new raddr, raddrbase = result;
+        new o1addr, o2addr = oper2 + 2;
+        new i1, j1 = size1 * 2, i2, j2 = size2 * 2;
+
+        for(i2 = 1; i2 != j2; ++i2) {
+            #emit load.s.pri o2addr
+            #emit lodb.i 2
+            #emit stor.s.pri value2
+
+            carry = 0;
+            o2addr += 2;
+            o1addr = oper1 + 2;
+            raddr = (raddrbase += 2);
+
+            printf("value2 %d", value2);
+
+            for(i1 = 1; i1 != j1; ++i1) { // result += carry + oper1 + oper2
+                printf("i1 %d carry %d %032b", i1, carry);
+
+                #emit load.s.pri o1addr
+                #emit lodb.i 2
+                #emit load.s.alt value2
+                #emit umul
+                #emit move.alt
+                #emit load.s.pri raddr
+                #emit lodb.i 2
+                #emit add
+                #emit load.s.alt carry
+                #emit add
+                #emit load.s.alt raddr
+                #emit strb.i 2
+                #emit shr.c.pri 16
+                #emit stor.s.pri carry
+
+                BigIntPrint(result);
+
+                o1addr += 2;
+                raddr += 2;
+            }
+            #emit load.s.pri raddr
+            #emit lodb.i 2
+            #emit load.s.alt carry
+            #emit add
+            #emit load.s.alt raddr
+            #emit strb.i 2
+
+            BigIntPrint(result);
+        }
+        BigIntPrint(result);
+        BigIntTrim(result);
+        BigIntPrint(result);
+
+        return result;
     }
     return 0;
 }
@@ -444,9 +614,9 @@ stock BigIntResult: operator+(BigIntResult: oper1, BigIntResult: oper2) {
     printf("BigIntResult: operator+(BigIntResult: %d BigIntResult: %d)", _: oper1, _: oper2);
 
     new dest = (_: oper1 < _: oper2) ? (_: oper1) : (_: oper2); // first address
-    new free_size = BigIntGetSize(_: oper1) + BigIntGetSize(_: oper2);
-    new result = BigIntAdd(_: oper1, _: oper2);
+    new result = BigIntAddSub(_: oper1, _: oper2);
     new result_size = BigIntGetSize(result);
+    new free_size = BigIntGetSize(_: oper1) + BigIntGetSize(_: oper2);
 
     raw_memcpy(dest, result, 0, result_size * 4, result_size);
     HeapFree(free_size);
@@ -457,7 +627,7 @@ stock BigIntResult: operator+(BigIntResult: oper1, BigIntResult: oper2) {
 stock BigIntResult: operator+(BigInt: oper1, BigIntResult: oper2) {
     printf("BigIntResult: operator+(BigInt: %d BigIntResult: %d)", _: oper1, _: oper2);
 
-    new result = BigIntAdd(_: oper1, _: oper2);
+    new result = BigIntAddSub(_: oper1, _: oper2);
     new result_size = BigIntGetSize(result);
     new oper2_size = BigIntGetSize(_: oper2);
 
@@ -474,7 +644,7 @@ stock BigIntResult: operator+(BigInt: oper1, BigIntResult: oper2) {
 stock BigIntResult: operator+(BigInt: oper1, BigInt: oper2) {
     printf("BigIntResult: operator+(BigInt: %d BigInt: %d)", _: oper1, _: oper2);
     // avoid destructor of BigInt
-    #emit const.pri BigIntAdd
+    #emit const.pri BigIntAddSub
     #emit add.c 4
     #emit sctrl 6
 
@@ -500,7 +670,7 @@ stock BigIntResult: operator+(BigIntResult: oper1, oper2) {
 stock BigIntResult: operator-(BigIntResult: oper) {
     printf("BigIntResult: operator-(BigIntResult: %d)", _: oper);
     // faster than calling the function
-    #emit const.pri BigIntNeg
+    #emit const.pri BigIntNegFlag
     #emit add.c 4
     #emit sctrl 6
 
@@ -512,7 +682,7 @@ stock BigIntResult: operator-(BigInt: oper) {
 
     (_: oper) = BigIntCopy(_: oper);
     // avoid destructor of BigInt
-    #emit const.pri BigIntNeg
+    #emit const.pri BigIntNegFlag
     #emit add.c 4
     #emit sctrl 6
 
@@ -522,13 +692,13 @@ stock BigIntResult: operator-(BigInt: oper) {
 stock BigIntResult: operator-(BigIntResult: oper1, BigIntResult: oper2) {
     printf("BigIntResult: operator-(BigIntResult: %d BigIntResult: %d)", _: oper1, _: oper2);
 
-    return oper1 + BigIntResult: BigIntNeg(_: oper2);
+    return oper1 + BigIntResult: BigIntNegFlag(_: oper2);
 }
 
 stock BigIntResult: operator-(BigInt: oper1, BigIntResult: oper2) {
     printf("BigIntResult: operator-(BigInt: %d BigIntResult: %d)", _: oper1, _: oper2);
 
-    oper2 = oper1 + BigIntResult: BigIntNeg(_: oper2);
+    oper2 = oper1 + BigIntResult: BigIntNegFlag(_: oper2);
     // avoid destructor of BigInt
     #emit retn
 
@@ -538,7 +708,7 @@ stock BigIntResult: operator-(BigInt: oper1, BigIntResult: oper2) {
 stock BigIntResult: operator-(BigIntResult: oper1, BigInt: oper2) {
     printf("BigIntResult: operator-(BigIntResult: %d BigInt: %d)", _: oper1, _: oper2);
 
-    oper1 = oper1 + BigIntResult: BigIntNeg(BigIntCopy(_: oper2));
+    oper1 = oper1 + BigIntResult: BigIntNegFlag(BigIntCopy(_: oper2));
     // avoid destructor of BigInt
     #emit retn
 
@@ -548,7 +718,7 @@ stock BigIntResult: operator-(BigIntResult: oper1, BigInt: oper2) {
 stock BigIntResult: operator-(BigInt: oper1, BigInt: oper2) {
     printf("BigIntResult: operator-(BigInt: %d BigInt: %d)", _: oper1, _: oper2);
 
-    (_: oper1) = _: (oper1 + BigIntResult: BigIntNeg(BigIntCopy(_: oper2)));
+    (_: oper1) = _: (oper1 + BigIntResult: BigIntNegFlag(BigIntCopy(_: oper2)));
     // avoid destructor of BigInt
     #emit retn
 
@@ -568,7 +738,7 @@ stock BigIntResult: operator-(BigInt: oper1, oper2) {
 stock BigIntResult: operator-(oper1, BigInt: oper2) {
     printf("BigIntResult: operator-(%d, BigInt: %d)", _: oper1, _: oper2);
 
-    oper1 = _: (oper1 + BigIntResult: BigIntNeg(BigIntCopy(_: oper2)));
+    oper1 = _: (oper1 + BigIntResult: BigIntNegFlag(BigIntCopy(_: oper2)));
     // avoid destructor of BigInt
     #emit retn
 
@@ -578,13 +748,70 @@ stock BigIntResult: operator-(oper1, BigInt: oper2) {
 stock BigIntResult: operator-(BigIntResult: oper1, oper2) {
     printf("BigIntResult: operator-(BigIntResult: %d, %d)", _: oper1, _: oper2);
 
-    return  oper1 + BigIntResult: BigIntFromInt(-oper2);
+    return oper1 + BigIntResult: BigIntFromInt(-oper2);
 }
 
 stock BigIntResult: operator-(oper1, BigIntResult: oper2) {
     printf("BigIntResult: operator-(%d, BigIntResult: %d)", _: oper1, _: oper2);
 
-    return oper1 + BigIntResult: BigIntNeg(_: oper2);
+    return oper1 + BigIntResult: BigIntNegFlag(_: oper2);
+}
+
+stock BigIntResult: operator*(BigIntResult: oper1, BigIntResult: oper2) {
+    printf("BigIntResult: operator*(BigIntResult: %d BigIntResult: %d)", _: oper1, _: oper2);
+
+    new dest = (_: oper1 < _: oper2) ? (_: oper1) : (_: oper2); // first address
+    new result = BigIntMul(_: oper1, _: oper2);
+    new result_size = BigIntGetSize(result);
+    new free_size = BigIntGetSize(_: oper1) + BigIntGetSize(_: oper2);
+
+    raw_memcpy(dest, result, 0, result_size * 4, result_size);
+    HeapFree(free_size);
+
+    return BigIntResult: dest;
+}
+
+stock BigIntResult: operator*(BigInt: oper1, BigIntResult: oper2) {
+    printf("BigIntResult: operator*(BigInt: %d BigIntResult: %d)", _: oper1, _: oper2);
+
+    new result = BigIntMul(_: oper1, _: oper2);
+    new result_size = BigIntGetSize(result);
+    new oper2_size = BigIntGetSize(_: oper2);
+
+    raw_memcpy(_: oper2, result, 0, result_size * 4, result_size);
+    HeapFree(oper2_size);
+    // avoid destructor of BigInt
+    #emit load.s.pri oper2
+    #emit stack 12
+    #emit retn
+
+    return BigIntResult: 0;
+}
+
+stock BigIntResult: operator*(BigInt: oper1, BigInt: oper2) {
+    printf("BigIntResult: operator*(BigInt: %d BigInt: %d)", _: oper1, _: oper2);
+    // avoid destructor of BigInt
+    #emit const.pri BigIntMul
+    #emit add.c 4
+    #emit sctrl 6
+
+    return BigIntResult: 0;
+}
+
+stock BigIntResult: operator*(BigInt: oper1, oper2) {
+    printf("BigIntResult: operator*(BigInt: %d, %d)", _: oper1, _: oper2);
+
+    oper2 = _: (oper1 * BigIntResult: BigIntFromInt(oper2));
+    // avoid destructor of BigInt
+    #emit retn
+
+    return BigIntResult: 0;
+}
+
+stock BigIntResult: operator*(BigIntResult: oper1, oper2) {
+    printf("BigIntResult: operator*(BigIntResult: %d, %d)", _: oper1, _: oper2);
+
+    return oper1 * BigIntResult: BigIntFromInt(oper2);
 }
 
 // always use cBigInt for variables otherwise you could overwrite an initialized variable
@@ -601,6 +828,17 @@ stock BigIntGetValues(const & BigInt: address, dest[], const size = sizeof dest)
         #emit stor.s.pri destaddr
 
         BigIntPrint(_: address);
+
+        if(BigIntGetFlags(_: address) & BigIntIsNeg) { // BigInts are always stored as absolute value / positive
+            new BigInt: int = BigIntResult: BigIntNeg(BigIntCopy(_: address)); // make a copy and negate it
+
+            BigIntPrint(_: int);
+
+            raw_memset(destaddr, size, -1); // fill dest array with 1s
+
+            return raw_memcpy(destaddr, _: int + 2, 0, BigIntGetSize(_: int) * 4 - 2, size);
+        }
+        raw_memset(destaddr, size, 0); // clear dest array
 
         return raw_memcpy(destaddr, _: address + 2, 0, BigIntGetSize(_: address) * 4 - 2, size);
     }
