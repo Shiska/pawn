@@ -38,6 +38,57 @@ TestInit:Run() { // call all operators at least once
     // BigIntResult: operator*(BigIntResult: oper1, oper2)                  - result * 5
     // BigIntResult: operator*(BigIntResult: oper1, BigIntResult: oper2)    - result * result
     new cBigInt: int6 = (int1 * 10) * (int1 * int2 * int2) * 5; // 31250
+    // equal
+    if(-int1 == -int2) {} // bool: operator==(BigIntResult: oper1, BigIntResult: oper2)
+    if(int3 == -int4) {} // bool: operator==(BigInt: oper1, BigIntResult: oper2)
+    if(int5 == int6) {}  // bool: operator==(BigInt: oper1, BigInt: oper2)
+    if(-int1 == 5) {} // bool: operator==(BigIntResult: oper1, oper2)
+    if(int3 == -5) {} // bool: operator==(BigInt: oper1, oper2)
+    // not equal
+    if(-int1 != -int2) {} // bool: operator!=(BigIntResult: oper1, BigIntResult: oper2)
+    if(int3 != -int4) {} // bool: operator!=(BigInt: oper1, BigIntResult: oper2)
+    if(int5 != int6) {}  // bool: operator!=(BigInt: oper1, BigInt: oper2)
+    if(-int1 != 5) {} // bool: operator!=(BigIntResult: oper1, oper2)
+    if(int3 != -5) {} // bool: operator!=(BigInt: oper1, oper2)
+    // less
+    if(-int1 < -int2) {} // bool: operator<(BigIntResult: oper1, BigIntResult: oper2)
+    if(-int3 < int4) {} // bool: operator<(BigIntResult: oper1, BigInt: oper2)
+    if(int4 < -int3) {} // bool: operator<(BigInt: oper1, BigIntResult: oper2)
+    if(int5 < int6) {} // bool: operator<(BigInt: oper1, BigInt: oper2)
+    if(-int1 < 5) {} // bool: operator<(BigIntResult: oper1, oper2)
+    if(5 < -int1) {} // bool: operator<(oper1, BigIntResult: oper2)
+    if(int3 < -5) {} // bool: operator<(BigInt: oper1, oper2)
+    if(-5 < int3) {} // bool: operator<(oper1, BigInt: oper2)
+    // greater
+    if(-int1 > -int2) {} // bool: operator>(BigIntResult: oper1, BigIntResult: oper2)
+    if(-int3 > int4) {} // bool: operator>(BigIntResult: oper1, BigInt: oper2)
+    if(int4 > -int3) {} // bool: operator>(BigInt: oper1, BigIntResult: oper2)
+    if(int5 > int6) {} // bool: operator>(BigInt: oper1, BigInt: oper2)
+    if(-int1 > 5) {} // bool: operator>(BigIntResult: oper1, oper2)
+    if(5 > -int1) {} // bool: operator>(oper1, BigIntResult: oper2)
+    if(int3 > -5) {} // bool: operator>(BigInt: oper1, oper2)
+    if(-5 > int3) {} // bool: operator>(oper1, BigInt: oper2)
+    // less equal
+    if(-int1 <= -int2) {} // bool: operator<=(BigIntResult: oper1, BigIntResult: oper2)
+    if(-int3 <= int4) {} // bool: operator<=(BigIntResult: oper1, BigInt: oper2)
+    if(int4 <= -int3) {} // bool: operator<=(BigInt: oper1, BigIntResult: oper2)
+    if(int5 <= int6) {} // bool: operator<=(BigInt: oper1, BigInt: oper2)
+    if(-int1 <= 5) {} // bool: operator<=(BigIntResult: oper1, oper2)
+    if(5 <= -int1) {} // bool: operator<=(oper1, BigIntResult: oper2)
+    if(int3 <= -5) {} // bool: operator<=(BigInt: oper1, oper2)
+    if(-5 <= int3) {} // bool: operator<=(oper1, BigInt: oper2)
+    // greater equal
+    if(-int1 >= -int2) {} // bool: operator>=(BigIntResult: oper1, BigIntResult: oper2)
+    if(-int3 >= int4) {} // bool: operator>=(BigIntResult: oper1, BigInt: oper2)
+    if(int4 >= -int3) {} // bool: operator>=(BigInt: oper1, BigIntResult: oper2)
+    if(int5 >= int6) {} // bool: operator>=(BigInt: oper1, BigInt: oper2)
+    if(-int1 >= 5) {} // bool: operator>=(BigIntResult: oper1, oper2)
+    if(5 >= -int1) {} // bool: operator>=(oper1, BigIntResult: oper2)
+    if(int3 >= -5) {} // bool: operator>=(BigInt: oper1, oper2)
+    if(-5 >= int3) {} // bool: operator>=(oper1, BigInt: oper2)
+    // not
+    if(!-int1) {} // bool: operator!(BigIntResult: oper)
+    if(!int1) {} // bool: operator!(BigInt: oper)
     // destructor
     // operator~(BigInt: oper[], size)
 }
@@ -47,17 +98,21 @@ Test:Run() {
     new cBigInt: int2 = -(int1 + int1 + int1 + int1); // 8589934588‬
     new cBigInt: int3 = -int2; // -8589934588‬
 
-    new data[2];
+    new data[8];
 
     BigIntGetValues(int2, data);
 
     ASSERT(data[0] == -4);
     ASSERT(data[1] == 1);
+    ASSERT(data[2] == 0);
 
     BigIntGetValues(int3, data);
 
     ASSERT(data[0] == 4);
     ASSERT(data[1] == -2);
+    ASSERT(data[2] == -1);
+
+    ASSERT(int3 == -int2);
 
     new cBigInt: int4 = int3 - int1 - int1 - int1 - int1 - int1; // 2147483647
 
@@ -71,6 +126,7 @@ Test:Run() {
 
     ASSERT(data[0] == 4);
     ASSERT(data[1] == -2);
+    ASSERT(data[2] == -1);
 
     new cBigInt: int6 = int1 * -4; // 8589934588‬
 
@@ -78,4 +134,13 @@ Test:Run() {
 
     ASSERT(data[0] == -4);
     ASSERT(data[1] == 1);
+    ASSERT(data[2] == 0);
+
+    new cBigInt: int7 = int1 * int1;
+
+    BigIntGetValues(int7, data);
+
+    ASSERT(data[0] == 1);
+    ASSERT(data[1] == 1073741823);
+    ASSERT(data[2] == 0);
 }

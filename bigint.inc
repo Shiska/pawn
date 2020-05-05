@@ -11,8 +11,8 @@ stock raw_memcpy(dest, const source, index, numbytes, maxlength) {
     return 0;
 }
 
-stock raw_memset(address, cells, value) {
-    printf("raw_memset(%d, %d, %d)", address, cells, value);
+stock raw_memset(address, numbytes, value) {
+    printf("raw_memset(%d, %d, %d)", address, numbytes, value);
 
     #emit lctrl 6
     #emit move.alt
@@ -21,14 +21,38 @@ stock raw_memset(address, cells, value) {
     #emit move.alt
     #emit lctrl 1
     #emit sub.alt
-    #emit add.c 92 // 23 * 4
+    #emit add.c 84 // 21 * 4
     #emit load.s.alt address
     #emit stor.s.pri address
-    #emit load.s.pri cells
-    #emit shl.c.pri 2
+    #emit load.s.pri numbytes
     #emit sref.s.pri address
     #emit load.s.pri value
     #emit fill 0
+    #emit retn
+
+    return 0;
+}
+
+stock raw_memcmp(address1, address2, numbytes) { // returns -1, 0, 1
+    printf("raw_memcmp(%d, %d, %d)", address1, address2, numbytes);
+
+    #emit lctrl 6
+    #emit move.alt
+    #emit lctrl 0
+    #emit add
+    #emit move.alt
+    #emit lctrl 1
+    #emit sub.alt
+    #emit add.c 84 // 21 * 4
+    #emit load.s.alt address1
+    #emit stor.s.pri address1
+    #emit load.s.pri numbytes
+    #emit sref.s.pri address1
+    #emit load.s.pri address2
+    #emit cmps 0
+    #emit retn
+
+    return 0;
 }
 
 stock HeapAlloc(cells) {
@@ -69,7 +93,7 @@ stock BigIntAlloc(cells) {
     if(256 > cells > 0) {
         new address = HeapAlloc(cells);
 
-        raw_memset(address, cells, 0);
+        raw_memset(address, cells * 4, 0);
         BigIntSetSize(address, cells);
 
         return address;
@@ -576,6 +600,29 @@ stock BigIntMul(oper1, oper2) {
     return 0;
 }
 
+stock BigIntCmp(oper1, oper2) {
+    printf("BigIntCmp(%d, %d)", oper1, oper2);
+
+    if(oper1 && oper2) {
+        new bool: isneg1 = bool: (BigIntGetFlags(oper1) & BigIntIsNeg);
+        new bool: isneg2 = bool: (BigIntGetFlags(oper2) & BigIntIsNeg);
+        // check sign
+        if(isneg1 != isneg2) {
+            return _: isneg2 - _: isneg1;
+        }
+        // check size if both negative or both positive
+        new size1 = BigIntGetSize(oper1);
+        new size2 = BigIntGetSize(oper2);
+
+        if(size1 != size2) {
+            return size1 - size2;
+        }
+        // compare bytes if size match
+        return raw_memcmp(oper1, oper2, size1 * 4);
+    }
+    return false;
+}
+
 stock operator~(BigInt: oper[], size) {
     #pragma unused size
 
@@ -814,6 +861,391 @@ stock BigIntResult: operator*(BigIntResult: oper1, oper2) {
     return oper1 * BigIntResult: BigIntFromInt(oper2);
 }
 
+stock bool: operator==(BigIntResult: oper1, BigIntResult: oper2) {
+    printf("bool: operator==(BigIntResult: %d, BigIntResult: %d)", _: oper1, _: oper2);
+
+    new result = (BigIntCmp(_: oper1, _: oper2) == 0);
+
+    HeapFree(BigIntGetSize(_: oper1) + BigIntGetSize(_: oper2));
+
+    return bool: result;
+}
+
+stock bool: operator==(BigInt: oper1, BigIntResult: oper2) {
+    printf("bool: operator==(BigInt: %d, BigIntResult: %d)", _: oper1, _: oper2);
+
+    (_: oper1) = (BigIntCmp(_: oper1, _: oper2) == 0);
+
+    HeapFree(BigIntGetSize(_: oper2));
+    // avoid destructor of BigInt
+    #emit load.s.pri oper1
+    #emit retn
+
+    return false;
+}
+
+stock bool: operator==(BigInt: oper1, BigInt: oper2) {
+    printf("bool: operator==(BigInt: %d, BigInt: %d)", _: oper1, _: oper2);
+
+    (_: oper1) = (BigIntCmp(_: oper1, _: oper2) == 0);
+    // avoid destructor of BigInt
+    #emit retn
+
+    return false;
+}
+
+stock bool: operator==(BigIntResult: oper1, oper2) {
+    printf("bool: operator==(BigIntResult: %d, %d)", _: oper1, _: oper2);
+
+    return (oper1 == BigIntResult: BigIntFromInt(oper2));
+}
+
+stock bool: operator==(BigInt: oper1, oper2) {
+    printf("bool: operator==(BigInt: %d, %d)", _: oper1, _: oper2);
+
+    oper2 = (oper1 == BigIntResult: BigIntFromInt(oper2));
+    // avoid destructor of BigInt
+    #emit retn
+
+    return false;
+}
+
+stock bool: operator!=(BigIntResult: oper1, BigIntResult: oper2) {
+    printf("bool: operator!=(BigIntResult: %d, BigIntResult: %d)", _: oper1, _: oper2);
+
+    return ((oper1 == oper2) == false);
+}
+
+stock bool: operator!=(BigInt: oper1, BigIntResult: oper2) {
+    printf("bool: operator!=(BigInt: %d, BigIntResult: %d)", _: oper1, _: oper2);
+
+    (_: oper1) = ((oper1 == oper2) == false);
+    // avoid destructor of BigInt
+    #emit retn
+
+    return false;
+}
+
+stock bool: operator!=(BigInt: oper1, BigInt: oper2) {
+    printf("bool: operator!=(BigInt: %d, BigInt: %d)", _: oper1, _: oper2);
+
+    (_: oper1) = ((oper1 == oper2) == false);
+    // avoid destructor of BigInt
+    #emit retn
+
+    return false;
+}
+
+stock bool: operator!=(BigIntResult: oper1, oper2) {
+    printf("bool: operator!=(BigIntResult: %d, %d)", _: oper1, _: oper2);
+
+    return (oper1 != oper2);
+}
+
+stock bool: operator!=(BigInt: oper1, oper2) {
+    printf("bool: operator!=(BigInt: %d, %d)", _: oper1, _: oper2);
+
+    oper2 = (oper1 != oper2);
+    // avoid destructor of BigInt
+    #emit retn
+
+    return false;
+}
+
+stock bool: operator<(BigIntResult: oper1, BigIntResult: oper2) {
+    printf("bool: operator<(BigIntResult: %d, BigIntResult: %d)", _: oper1, _: oper2);
+
+    new result = (BigIntCmp(_: oper1, _: oper2) < 0);
+
+    HeapFree(BigIntGetSize(_: oper1) + BigIntGetSize(_: oper2));
+
+    return bool: result;
+}
+
+stock bool: operator<(BigIntResult: oper1, BigInt: oper2) {
+    printf("bool: operator<(BigIntResult: %d, BigInt: %d)", _: oper1, _: oper2);
+
+    (_: oper2) = (BigIntCmp(_: oper1, _: oper2) < 0);
+
+    HeapFree(BigIntGetSize(_: oper1));
+    // avoid destructor of BigInt
+    #emit load.s.pri oper2
+    #emit retn
+
+    return false;
+}
+
+stock bool: operator<(BigInt: oper1, BigIntResult: oper2) {
+    printf("bool: operator<(BigInt: %d, BigIntResult: %d)", _: oper1, _: oper2);
+
+    (_: oper1) = (BigIntCmp(_: oper1, _: oper2) < 0);
+
+    HeapFree(BigIntGetSize(_: oper2));
+    // avoid destructor of BigInt
+    #emit load.s.pri oper1
+    #emit retn
+
+    return false;
+}
+
+stock bool: operator<(BigInt: oper1, BigInt: oper2) {
+    printf("bool: operator<(BigInt: %d, BigInt: %d)", _: oper1, _: oper2);
+
+    (_: oper1) = (BigIntCmp(_: oper1, _: oper2) < 0);
+    // avoid destructor of BigInt
+    #emit retn
+
+    return false;
+}
+
+stock bool: operator<(BigIntResult: oper1, oper2) {
+    printf("bool: operator<(BigIntResult: %d, %d)", _: oper1, _: oper2);
+
+    return (oper1 < BigIntResult: BigIntFromInt(oper2));
+}
+
+stock bool: operator<(oper1, BigIntResult: oper2) {
+    printf("bool: operator<(%d, BigIntResult: %d)", _: oper1, _: oper2);
+
+    return (BigIntResult: BigIntFromInt(oper1) < oper2);
+}
+
+stock bool: operator<(BigInt: oper1, oper2) {
+    printf("bool: operator<(BigInt: %d, %d)", _: oper1, _: oper2);
+
+    oper2 = (oper1 < BigIntResult: BigIntFromInt(oper2));
+    // avoid destructor of BigInt
+    #emit retn
+
+    return false;
+}
+
+stock bool: operator<(oper1, BigInt: oper2) {
+    printf("bool: operator<(%d, BigInt: %d)", _: oper1, _: oper2);
+
+    oper1 = (BigIntResult: BigIntFromInt(oper1) < oper2);
+    // avoid destructor of BigInt
+    #emit retn
+
+    return false;
+}
+
+stock bool: operator>(BigIntResult: oper1, BigIntResult: oper2) {
+    printf("bool: operator>(BigIntResult: %d, BigIntResult: %d)", _: oper1, _: oper2);
+
+    return oper2 < oper1;
+}
+
+stock bool: operator>(BigIntResult: oper1, BigInt: oper2) {
+    printf("bool: operator>(BigIntResult: %d, BigInt: %d)", _: oper1, _: oper2);
+
+    (_: oper1) = oper2 < oper1;
+    // avoid destructor of BigInt
+    #emit retn
+
+    return false;
+}
+
+stock bool: operator>(BigInt: oper1, BigIntResult: oper2) {
+    printf("bool: operator>(BigInt: %d, BigIntResult: %d)", _: oper1, _: oper2);
+
+    (_: oper1) = oper2 < oper1;
+    // avoid destructor of BigInt
+    #emit retn
+
+    return false;
+}
+
+stock bool: operator>(BigInt: oper1, BigInt: oper2) {
+    printf("bool: operator>(BigInt: %d, BigInt: %d)", _: oper1, _: oper2);
+
+    (_: oper1) = oper2 < oper1;
+    // avoid destructor of BigInt
+    #emit retn
+
+    return false;
+}
+
+stock bool: operator>(BigIntResult: oper1, oper2) {
+    printf("bool: operator>(BigIntResult: %d, %d)", _: oper1, _: oper2);
+
+    return (oper2 < oper1);
+}
+
+stock bool: operator>(oper1, BigIntResult: oper2) {
+    printf("bool: operator>(%d, BigIntResult: %d)", _: oper1, _: oper2);
+
+    return (oper2 < oper1);
+}
+
+stock bool: operator>(BigInt: oper1, oper2) {
+    printf("bool: operator>(BigInt: %d, %d)", _: oper1, _: oper2);
+
+    oper2 = (oper2 < oper1);
+    // avoid destructor of BigInt
+    #emit retn
+
+    return false;
+}
+
+stock bool: operator>(oper1, BigInt: oper2) {
+    printf("bool: operator>(%d, BigInt: %d)", _: oper1, _: oper2);
+
+    oper1 = (oper2 < oper1);
+    // avoid destructor of BigInt
+    #emit retn
+
+    return false;
+}
+
+stock bool: operator<=(BigIntResult: oper1, BigIntResult: oper2) {
+    printf("bool: operator<=(BigIntResult: %d, BigIntResult: %d)", _: oper1, _: oper2);
+
+    return ((oper2 < oper1) == false);
+}
+
+stock bool: operator<=(BigIntResult: oper1, BigInt: oper2) {
+    printf("bool: operator<=(BigIntResult: %d, BigInt: %d)", _: oper1, _: oper2);
+
+    (_: oper2) = ((oper2 < oper1) == false);
+    // avoid destructor of BigInt
+    #emit retn
+
+    return false;
+}
+
+stock bool: operator<=(BigInt: oper1, BigIntResult: oper2) {
+    printf("bool: operator<=(BigInt: %d, BigIntResult: %d)", _: oper1, _: oper2);
+
+    (_: oper2) = ((oper2 < oper1) == false);
+    // avoid destructor of BigInt
+    #emit retn
+
+    return false;
+}
+
+stock bool: operator<=(BigInt: oper1, BigInt: oper2) {
+    printf("bool: operator<=(BigInt: %d, BigInt: %d)", _: oper1, _: oper2);
+
+    (_: oper2) = ((oper2 < oper1) == false);
+    // avoid destructor of BigInt
+    #emit retn
+
+    return false;
+}
+
+stock bool: operator<=(BigIntResult: oper1, oper2) {
+    printf("bool: operator<=(BigIntResult: %d, %d)", _: oper1, _: oper2);
+
+    return ((oper2 < oper1) == false);
+}
+
+stock bool: operator<=(oper1, BigIntResult: oper2) {
+    printf("bool: operator<=(%d, BigIntResult: %d)", _: oper1, _: oper2);
+
+    return ((oper2 < oper1) == false);
+}
+
+stock bool: operator<=(BigInt: oper1, oper2) {
+    printf("bool: operator<=(BigInt: %d, %d)", _: oper1, _: oper2);
+
+    oper2 = ((oper2 < oper1) == false);
+    // avoid destructor of BigInt
+    #emit retn
+
+    return false;
+}
+
+stock bool: operator<=(oper1, BigInt: oper2) {
+    printf("bool: operator<=(%d, BigInt: %d)", _: oper1, _: oper2);
+
+    oper1 = ((oper2 < oper1) == false);
+    // avoid destructor of BigInt
+    #emit retn
+
+    return false;
+}
+
+stock bool: operator>=(BigIntResult: oper1, BigIntResult: oper2) {
+    printf("bool: operator>=(BigIntResult: %d, BigIntResult: %d)", _: oper1, _: oper2);
+
+    return ((oper1 < oper2) == false);
+}
+
+stock bool: operator>=(BigIntResult: oper1, BigInt: oper2) {
+    printf("bool: operator>=(BigIntResult: %d, BigInt: %d)", _: oper1, _: oper2);
+
+    (_: oper2) = ((oper1 < oper2) == false);
+    // avoid destructor of BigInt
+    #emit retn
+
+    return false;
+}
+
+stock bool: operator>=(BigInt: oper1, BigIntResult: oper2) {
+    printf("bool: operator>=(BigInt: %d, BigIntResult: %d)", _: oper1, _: oper2);
+
+    (_: oper2) = ((oper1 < oper2) == false);
+    // avoid destructor of BigInt
+    #emit retn
+
+    return false;
+}
+
+stock bool: operator>=(BigInt: oper1, BigInt: oper2) {
+    printf("bool: operator>=(BigInt: %d, BigInt: %d)", _: oper1, _: oper2);
+
+    (_: oper2) = ((oper1 < oper2) == false);
+    // avoid destructor of BigInt
+    #emit retn
+
+    return false;
+}
+
+stock bool: operator>=(BigIntResult: oper1, oper2) {
+    printf("bool: operator>=(BigIntResult: %d, %d)", _: oper1, _: oper2);
+
+    return ((oper1 < oper2) == false);
+}
+
+stock bool: operator>=(oper1, BigIntResult: oper2) {
+    printf("bool: operator>=(%d, BigIntResult: %d)", _: oper1, _: oper2);
+
+    return ((oper1 < oper2) == false);
+}
+
+stock bool: operator>=(BigInt: oper1, oper2) {
+    printf("bool: operator>=(BigInt: %d, %d)", _: oper1, _: oper2);
+
+    oper2 = ((oper1 < oper2) == false);
+    // avoid destructor of BigInt
+    #emit retn
+
+    return false;
+}
+
+stock bool: operator>=(oper1, BigInt: oper2) {
+    printf("bool: operator>=(%d, BigInt: %d)", _: oper1, _: oper2);
+
+    oper1 = ((oper1 < oper2) == false);
+    // avoid destructor of BigInt
+    #emit retn
+
+    return false;
+}
+
+stock bool: operator!(BigIntResult: oper) {
+    return (oper == 0);
+}
+
+stock bool: operator!(BigInt: oper) {
+    (_: oper) = (oper == 0);
+    // avoid destructor of BigInt
+    #emit retn
+
+    return false;
+}
+
 // always use cBigInt for variables otherwise you could overwrite an initialized variable
 // resulting that the deconstructor, for the overwritten variable, isn't called anymore, thus creating a leak in the heap
 #define cBigInt: const BigInt:
@@ -821,7 +1253,7 @@ stock BigIntResult: operator*(BigIntResult: oper1, oper2) {
 stock BigIntGetValues(const & BigInt: address, dest[], const size = sizeof dest) {
     printf("BigIntGetValues(%d)", _: address);
 
-    if(address) {
+    if(_: address) {
         new destaddr;
 
         #emit load.s.pri dest
@@ -834,11 +1266,11 @@ stock BigIntGetValues(const & BigInt: address, dest[], const size = sizeof dest)
 
             BigIntPrint(_: int);
 
-            raw_memset(destaddr, size, -1); // fill dest array with 1s
+            raw_memset(destaddr, size * 4, -1); // fill dest array with 1s
 
             return raw_memcpy(destaddr, _: int + 2, 0, BigIntGetSize(_: int) * 4 - 2, size);
         }
-        raw_memset(destaddr, size, 0); // clear dest array
+        raw_memset(destaddr, size * 4, 0); // clear dest array
 
         return raw_memcpy(destaddr, _: address + 2, 0, BigIntGetSize(_: address) * 4 - 2, size);
     }
