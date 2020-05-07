@@ -133,6 +133,21 @@ stock BigIntFromInt(integer) {
     return int;
 }
 
+stock BigIntZero(& zero) { // uses a local variable as storage
+    printf("BigIntZero(%d)", zero);
+
+    new addr;
+
+    zero = 0;
+
+    #emit load.s.pri zero
+    #emit stor.s.pri addr
+
+    BigIntSetSize(addr, 1);
+
+    return addr;
+}
+
 stock BigIntCopy(address) {
     printf("BigIntCopy(%d)", address);
 
@@ -154,6 +169,24 @@ stock BigIntFree(address) {
         return HeapFree(BigIntGetSize(address));
     }
     return false;
+}
+// Note: Moves bigint to dest and frees everything behind it!!!
+// Only use this function with BigIntResult
+stock BigIntMov(dest, src) {
+    if(dest && src) {
+        new size = BigIntGetSize(src);
+        new bytes = size << 2;
+
+        raw_memcpy(dest, src, 0, bytes, size);
+
+        #emit load.s.pri dest
+        #emit load.s.alt bytes
+        #emit add
+        #emit sctrl 2 // heap
+
+        return dest;
+    }
+    return 0;
 }
 
 stock BigIntSetSize(address, cells) {
@@ -270,31 +303,51 @@ stock BigIntPrint(address) {
     }
 }
 
-stock BigIntAddSub(oper1, oper2) {
-    printf("BigIntAddSub(%d, %d)", oper1, oper2);
+stock BigIntAdd(oper1, oper2) {
+    printf("BigIntAdd(%d, %d)", oper1, oper2);
 
     if(oper1 && oper2) {
         new bool: isneg1 = bool: (BigIntGetFlags(oper1) & BigIntIsNeg);
         new bool: isneg2 = bool: (BigIntGetFlags(oper2) & BigIntIsNeg);
 
-        if(isneg1 ^ isneg2) {
-            if(isneg1) {
-                return BigIntSub(oper2, oper1);
+        if(isneg1 ^ isneg2) { // one operator is negative
+            if(isneg1) { // switch to sub because we store everything as unsigned
+                return BigIntSubInternal(oper2, oper1);
             }
-            return BigIntSub(oper1, oper2);
+            return BigIntSubInternal(oper1, oper2);
         }
-        return BigIntAdd(oper1, oper2);
+        return BigIntAddInternal(oper1, oper2);
+    }
+    return 0;
+}
+
+stock BigIntSub(oper1, oper2) {
+    printf("BigIntSub(%d, %d)", oper1, oper2);
+
+    if(oper1 && oper2) { // same as BigIntAdd, except checks are inverted because isneg2 is mentally inverted due to subbing
+        new bool: isneg1 = bool: (BigIntGetFlags(oper1) & BigIntIsNeg);
+        new bool: isneg2 = bool: (BigIntGetFlags(oper2) & BigIntIsNeg);
+
+        if(isneg1 ^ isneg2) { // two positive or two negative
+            return BigIntAddInternal(oper1, oper2); // works because result tag depends on oper1
+        }
+        if(isneg1) {
+            return BigIntSubInternal(oper2, oper1);
+        }
+        return BigIntSubInternal(oper1, oper2);
     }
     return 0;
 }
 
 // gets called for two positive or two negative numbers
-stock BigIntAdd(oper1, oper2) {
-    printf("BigIntAdd(%d, %d)", oper1, oper2);
+stock BigIntAddInternal(oper1, oper2) {
+    printf("BigIntAddInternal(%d, %d)", oper1, oper2);
 
     if(oper1 && oper2) {
         new size1 = BigIntGetSize(oper1);
         new size2 = BigIntGetSize(oper2);
+
+        new bool: isneg = bool: (BigIntGetFlags(oper1) & BigIntIsNeg); // get it before swapping
         // switch operators if oper1 is smaller than oper2
         if(size1 < size2) {
             // switch sizes
@@ -308,62 +361,90 @@ stock BigIntAdd(oper1, oper2) {
             #emit stor.s.pri oper2
             #emit stor.s.alt oper1
         }
-        new result = BigIntAlloc(size1 + 1);
-        new addr = result + 2;
+        new result = BigIntAlloc(size1);
 
-        if(BigIntGetFlags(oper1) & BigIntIsNeg) { // if any oper is negative result is negative
-            BigIntSetFlags(result, BigIntIsNeg);
-        }
         BigIntPrint(_: oper1);
         BigIntPrint(_: oper2);
 
-        oper1 += 2;
-        oper2 += 2;
+        new carry = 0;
+        new i, j = size2 * 2;
+        new addr = result + 2;
         // add both values together
-        for(new i = 1, j = size2 * 2; i != j; ++i) {
+        while(++i != j) {
             #emit load.s.pri oper1
+            #emit add.c 2
+            #emit stor.s.pri oper1
             #emit lodb.i 2
             #emit move.alt
             #emit load.s.pri oper2
+            #emit add.c 2
+            #emit stor.s.pri oper2
             #emit lodb.i 2
             #emit add
-            #emit lref.s.alt addr
+            #emit load.s.alt carry
             #emit add
-            #emit sref.s.pri addr
+            #emit load.s.alt addr
+            #emit strb.i 2
+            #emit shr.c.pri 16
+            #emit stor.s.pri carry
+            #emit const.pri 2
+            #emit add
+            #emit stor.s.pri addr
 
             printf("    adding addresses (%d + %d + %d)", oper1, oper2, addr);
             BigIntPrint(result);
-
-            oper1 += 2;
-            oper2 += 2;
-            addr += 2;
         }
-        // add missing bytes from bigger operator
-        for(new i, j = (size1 - size2) * 2; i != j; ++i) {
+        j = size1 * 2;
+
+        if(i == j) { // size1 == size2
+            if(carry) { // allocate additional cell
+                printf("Allocating additional cell - %d", carry);
+
+
+                #emit load.s.pri carry
+                #emit heap 4
+                #emit strb.i 2
+
+                BigIntSetSize(result, size1 + 1);
+            }
+
+        } else { // add missing bytes from bigger operator
+            // add carry
             #emit load.s.pri oper1
+            #emit add.c 2
+            #emit stor.s.pri oper1
             #emit lodb.i 2
-            #emit lref.s.alt addr
+            #emit load.s.alt carry
             #emit add
-            #emit sref.s.pri addr
+            #emit load.s.alt addr
+            #emit strb.i 2
 
-            printf("    adding addresses (%d + %d)", oper1, addr);
-            BigIntPrint(result);
+            while(++i != j) {
+                #emit load.s.pri addr
+                #emit add.c 2
+                #emit stor.s.pri addr
+                #emit move.alt
+                #emit load.s.pri oper1
+                #emit add.c 2
+                #emit stor.s.pri oper1
+                #emit lodb.i 2
+                #emit strb.i 2
 
-            oper1 += 2;
-            addr += 2;
+                printf("    adding addresses (%d + %d)", oper1, addr);
+                BigIntPrint(result);
+            }
         }
-        BigIntPrint(result);
-        BigIntTrim(result);
-        BigIntPrint(result);
-
+        if(isneg) { // if any oper is negative result is negative
+            BigIntSetFlags(result, BigIntIsNeg);
+        }
         return result;
     }
     return 0;
 }
 
 // gets called for one positive (oper1) and one negative (oper2) number
-stock BigIntSub(oper1, oper2) {
-    printf("BigIntSub(%d, %d)", oper1, oper2);
+stock BigIntSubInternal(oper1, oper2) {
+    printf("BigIntSubInternal(%d, %d)", oper1, oper2);
 
     if(oper1 && oper2) {
         new size1 = BigIntGetSize(oper1);
@@ -455,7 +536,7 @@ stock BigIntSub(oper1, oper2) {
     }
     return 0;
 }
-
+// don't use this, use BigIntNegFlag instead
 stock BigIntNeg(oper) { // inplace
     printf("BigIntNeg(%d)", oper);
 
@@ -591,16 +672,12 @@ stock BigIntMul(oper1, oper2) {
 
             BigIntPrint(result);
         }
-        BigIntPrint(result);
-        BigIntTrim(result);
-        BigIntPrint(result);
-
         return result;
     }
     return 0;
 }
 
-stock BigIntCmp(oper1, oper2) {
+stock BigIntCmp(oper1, oper2) { // -1, 0, 1 - oper1 is less than, equal or greater than
     printf("BigIntCmp(%d, %d)", oper1, oper2);
 
     if(oper1 && oper2) {
@@ -608,19 +685,35 @@ stock BigIntCmp(oper1, oper2) {
         new bool: isneg2 = bool: (BigIntGetFlags(oper2) & BigIntIsNeg);
         // check sign
         if(isneg1 != isneg2) {
-            return _: isneg2 - _: isneg1;
+            return _: isneg2 - _: isneg1; // -1, 1
         }
         // check size if both negative or both positive
         new size1 = BigIntGetSize(oper1);
         new size2 = BigIntGetSize(oper2);
 
-        if(size1 != size2) {
-            return size1 - size2;
+        if(size1 != size2) { // clamp to ensure -1 and 1 instead of any negative / positive value
+            return clamp(size1 - size2, -1, 1); // checking for -1 and 1 produces less opcode than checking for positive / negative
         }
         // compare bytes if size match
-        return raw_memcmp(oper1, oper2, size1 * 4);
+        return raw_memcmp(oper1, oper2, size1 << 2); // -1, 0, 1
     }
-    return false;
+    return 0;
+}
+
+stock BigIntCmpR(oper1, BigIntResult: oper2) {
+    new result = BigIntCmp(oper1, _: oper2);
+
+    HeapFree(BigIntGetSize(_: oper2));
+
+    return result;
+}
+
+stock BigIntCmpRR(BigIntResult: oper1, BigIntResult: oper2) {
+    new result = BigIntCmp(_: oper1, _: oper2);
+
+    HeapFree(BigIntGetSize(_: oper1) + BigIntGetSize(_: oper2));
+
+    return result;
 }
 
 stock operator~(BigInt: oper[], size) {
@@ -660,29 +753,14 @@ stock BigInt: operator=(BigInt: oper) {
 stock BigIntResult: operator+(BigIntResult: oper1, BigIntResult: oper2) {
     printf("BigIntResult: operator+(BigIntResult: %d BigIntResult: %d)", _: oper1, _: oper2);
 
-    new dest = (_: oper1 < _: oper2) ? (_: oper1) : (_: oper2); // first address
-    new result = BigIntAddSub(_: oper1, _: oper2);
-    new result_size = BigIntGetSize(result);
-    new free_size = BigIntGetSize(_: oper1) + BigIntGetSize(_: oper2);
-
-    raw_memcpy(dest, result, 0, result_size * 4, result_size);
-    HeapFree(free_size);
-
-    return BigIntResult: dest;
+    return BigIntResult: BigIntMov(min(_: oper1, _: oper2), BigIntAdd(_: oper1, _: oper2));
 }
 
 stock BigIntResult: operator+(BigInt: oper1, BigIntResult: oper2) {
     printf("BigIntResult: operator+(BigInt: %d BigIntResult: %d)", _: oper1, _: oper2);
 
-    new result = BigIntAddSub(_: oper1, _: oper2);
-    new result_size = BigIntGetSize(result);
-    new oper2_size = BigIntGetSize(_: oper2);
-
-    raw_memcpy(_: oper2, result, 0, result_size * 4, result_size);
-    HeapFree(oper2_size);
+    BigIntMov(_: oper2, BigIntAdd(_: oper1, _: oper2));
     // avoid destructor of BigInt
-    #emit load.s.pri oper2
-    #emit stack 12
     #emit retn
 
     return BigIntResult: 0;
@@ -691,7 +769,7 @@ stock BigIntResult: operator+(BigInt: oper1, BigIntResult: oper2) {
 stock BigIntResult: operator+(BigInt: oper1, BigInt: oper2) {
     printf("BigIntResult: operator+(BigInt: %d BigInt: %d)", _: oper1, _: oper2);
     // avoid destructor of BigInt
-    #emit const.pri BigIntAddSub
+    #emit const.pri BigIntAdd
     #emit add.c 4
     #emit sctrl 6
 
@@ -701,7 +779,9 @@ stock BigIntResult: operator+(BigInt: oper1, BigInt: oper2) {
 stock BigIntResult: operator+(BigInt: oper1, oper2) {
     printf("BigIntResult: operator+(BigInt: %d, %d)", _: oper1, _: oper2);
 
-    oper2 = _: (oper1 + BigIntResult: BigIntFromInt(oper2));
+    oper2 = BigIntFromInt(oper2);
+
+    BigIntMov(oper2, BigIntAdd(_: oper1, oper2));
     // avoid destructor of BigInt
     #emit retn
 
@@ -711,7 +791,7 @@ stock BigIntResult: operator+(BigInt: oper1, oper2) {
 stock BigIntResult: operator+(BigIntResult: oper1, oper2) {
     printf("BigIntResult: operator+(BigIntResult: %d, %d)", _: oper1, _: oper2);
 
-    return oper1 + BigIntResult: BigIntFromInt(oper2);
+    return BigIntResult: BigIntMov(_: oper1, BigIntAdd(_: oper1, BigIntFromInt(_: oper2)));
 }
 
 stock BigIntResult: operator-(BigIntResult: oper) {
@@ -739,13 +819,13 @@ stock BigIntResult: operator-(BigInt: oper) {
 stock BigIntResult: operator-(BigIntResult: oper1, BigIntResult: oper2) {
     printf("BigIntResult: operator-(BigIntResult: %d BigIntResult: %d)", _: oper1, _: oper2);
 
-    return oper1 + BigIntResult: BigIntNegFlag(_: oper2);
+    return BigIntResult: BigIntMov(min(_: oper1, _: oper2), BigIntSub(_: oper1, _: oper2));
 }
 
 stock BigIntResult: operator-(BigInt: oper1, BigIntResult: oper2) {
     printf("BigIntResult: operator-(BigInt: %d BigIntResult: %d)", _: oper1, _: oper2);
 
-    oper2 = oper1 + BigIntResult: BigIntNegFlag(_: oper2);
+    BigIntMov(_: oper2, BigIntSub(_: oper1, _: oper2));
     // avoid destructor of BigInt
     #emit retn
 
@@ -755,7 +835,7 @@ stock BigIntResult: operator-(BigInt: oper1, BigIntResult: oper2) {
 stock BigIntResult: operator-(BigIntResult: oper1, BigInt: oper2) {
     printf("BigIntResult: operator-(BigIntResult: %d BigInt: %d)", _: oper1, _: oper2);
 
-    oper1 = oper1 + BigIntResult: BigIntNegFlag(BigIntCopy(_: oper2));
+    BigIntMov(_: oper1, BigIntSub(_: oper1, _: oper2));
     // avoid destructor of BigInt
     #emit retn
 
@@ -765,9 +845,9 @@ stock BigIntResult: operator-(BigIntResult: oper1, BigInt: oper2) {
 stock BigIntResult: operator-(BigInt: oper1, BigInt: oper2) {
     printf("BigIntResult: operator-(BigInt: %d BigInt: %d)", _: oper1, _: oper2);
 
-    (_: oper1) = _: (oper1 + BigIntResult: BigIntNegFlag(BigIntCopy(_: oper2)));
-    // avoid destructor of BigInt
-    #emit retn
+    #emit const.pri BigIntSub
+    #emit add.c 4
+    #emit sctrl 6
 
     return BigIntResult: 0;
 }
@@ -775,7 +855,9 @@ stock BigIntResult: operator-(BigInt: oper1, BigInt: oper2) {
 stock BigIntResult: operator-(BigInt: oper1, oper2) {
     printf("BigIntResult: operator-(BigInt: %d, %d)", _: oper1, _: oper2);
 
-    oper2 = _: (oper1 + BigIntResult: BigIntFromInt(-oper2));
+    oper2 = BigIntFromInt(oper2);
+
+    BigIntMov(oper2, BigIntSub(_: oper1, oper2));
     // avoid destructor of BigInt
     #emit retn
 
@@ -785,7 +867,9 @@ stock BigIntResult: operator-(BigInt: oper1, oper2) {
 stock BigIntResult: operator-(oper1, BigInt: oper2) {
     printf("BigIntResult: operator-(%d, BigInt: %d)", _: oper1, _: oper2);
 
-    oper1 = _: (oper1 + BigIntResult: BigIntNegFlag(BigIntCopy(_: oper2)));
+    oper1 = BigIntFromInt(oper1);
+
+    BigIntMov(oper1, BigIntSub(oper1, _: oper2));
     // avoid destructor of BigInt
     #emit retn
 
@@ -795,41 +879,26 @@ stock BigIntResult: operator-(oper1, BigInt: oper2) {
 stock BigIntResult: operator-(BigIntResult: oper1, oper2) {
     printf("BigIntResult: operator-(BigIntResult: %d, %d)", _: oper1, _: oper2);
 
-    return oper1 + BigIntResult: BigIntFromInt(-oper2);
+    return BigIntResult: BigIntMov(_: oper1, BigIntSub(_: oper1, BigIntFromInt(oper2)));
 }
 
 stock BigIntResult: operator-(oper1, BigIntResult: oper2) {
     printf("BigIntResult: operator-(%d, BigIntResult: %d)", _: oper1, _: oper2);
 
-    return oper1 + BigIntResult: BigIntNegFlag(_: oper2);
+    return BigIntResult: BigIntMov(_: oper2, BigIntSub(BigIntFromInt(oper1), _: oper2));
 }
 
 stock BigIntResult: operator*(BigIntResult: oper1, BigIntResult: oper2) {
     printf("BigIntResult: operator*(BigIntResult: %d BigIntResult: %d)", _: oper1, _: oper2);
 
-    new dest = (_: oper1 < _: oper2) ? (_: oper1) : (_: oper2); // first address
-    new result = BigIntMul(_: oper1, _: oper2);
-    new result_size = BigIntGetSize(result);
-    new free_size = BigIntGetSize(_: oper1) + BigIntGetSize(_: oper2);
-
-    raw_memcpy(dest, result, 0, result_size * 4, result_size);
-    HeapFree(free_size);
-
-    return BigIntResult: dest;
+    return BigIntResult: BigIntMov(min(_: oper1, _: oper2), BigIntMul(_: oper1, _: oper2));
 }
 
 stock BigIntResult: operator*(BigInt: oper1, BigIntResult: oper2) {
     printf("BigIntResult: operator*(BigInt: %d BigIntResult: %d)", _: oper1, _: oper2);
 
-    new result = BigIntMul(_: oper1, _: oper2);
-    new result_size = BigIntGetSize(result);
-    new oper2_size = BigIntGetSize(_: oper2);
-
-    raw_memcpy(_: oper2, result, 0, result_size * 4, result_size);
-    HeapFree(oper2_size);
+    BigIntMov(_: oper2, BigIntMul(_: oper1, _: oper2));
     // avoid destructor of BigInt
-    #emit load.s.pri oper2
-    #emit stack 12
     #emit retn
 
     return BigIntResult: 0;
@@ -848,7 +917,9 @@ stock BigIntResult: operator*(BigInt: oper1, BigInt: oper2) {
 stock BigIntResult: operator*(BigInt: oper1, oper2) {
     printf("BigIntResult: operator*(BigInt: %d, %d)", _: oper1, _: oper2);
 
-    oper2 = _: (oper1 * BigIntResult: BigIntFromInt(oper2));
+    oper2 = BigIntFromInt(oper2);
+
+    BigIntMov(oper2, BigIntMul(_: oper1, oper2));
     // avoid destructor of BigInt
     #emit retn
 
@@ -858,27 +929,21 @@ stock BigIntResult: operator*(BigInt: oper1, oper2) {
 stock BigIntResult: operator*(BigIntResult: oper1, oper2) {
     printf("BigIntResult: operator*(BigIntResult: %d, %d)", _: oper1, _: oper2);
 
-    return oper1 * BigIntResult: BigIntFromInt(oper2);
+    return BigIntResult: BigIntMov(_: oper1, BigIntMul(_: oper1, BigIntFromInt(oper2)));
 }
 
 stock bool: operator==(BigIntResult: oper1, BigIntResult: oper2) {
     printf("bool: operator==(BigIntResult: %d, BigIntResult: %d)", _: oper1, _: oper2);
 
-    new result = (BigIntCmp(_: oper1, _: oper2) == 0);
-
-    HeapFree(BigIntGetSize(_: oper1) + BigIntGetSize(_: oper2));
-
-    return bool: result;
+    return !BigIntCmpRR(oper1, oper2);
 }
 
 stock bool: operator==(BigInt: oper1, BigIntResult: oper2) {
     printf("bool: operator==(BigInt: %d, BigIntResult: %d)", _: oper1, _: oper2);
 
-    (_: oper1) = (BigIntCmp(_: oper1, _: oper2) == 0);
-
-    HeapFree(BigIntGetSize(_: oper2));
+    BigIntCmpR(_: oper1, oper2);
     // avoid destructor of BigInt
-    #emit load.s.pri oper1
+    #emit not
     #emit retn
 
     return false;
@@ -887,8 +952,9 @@ stock bool: operator==(BigInt: oper1, BigIntResult: oper2) {
 stock bool: operator==(BigInt: oper1, BigInt: oper2) {
     printf("bool: operator==(BigInt: %d, BigInt: %d)", _: oper1, _: oper2);
 
-    (_: oper1) = (BigIntCmp(_: oper1, _: oper2) == 0);
+    BigIntCmp(_: oper1, _: oper2);
     // avoid destructor of BigInt
+    #emit not
     #emit retn
 
     return false;
@@ -897,14 +963,15 @@ stock bool: operator==(BigInt: oper1, BigInt: oper2) {
 stock bool: operator==(BigIntResult: oper1, oper2) {
     printf("bool: operator==(BigIntResult: %d, %d)", _: oper1, _: oper2);
 
-    return (oper1 == BigIntResult: BigIntFromInt(oper2));
+    return !BigIntCmpRR(oper1, BigIntResult: BigIntFromInt(oper2));
 }
 
 stock bool: operator==(BigInt: oper1, oper2) {
     printf("bool: operator==(BigInt: %d, %d)", _: oper1, _: oper2);
 
-    oper2 = (oper1 == BigIntResult: BigIntFromInt(oper2));
+    BigIntCmpR(_: oper1, BigIntResult: BigIntFromInt(oper2));
     // avoid destructor of BigInt
+    #emit not
     #emit retn
 
     return false;
@@ -913,14 +980,16 @@ stock bool: operator==(BigInt: oper1, oper2) {
 stock bool: operator!=(BigIntResult: oper1, BigIntResult: oper2) {
     printf("bool: operator!=(BigIntResult: %d, BigIntResult: %d)", _: oper1, _: oper2);
 
-    return ((oper1 == oper2) == false);
+    return !!BigIntCmpRR(oper1, oper2);
 }
 
 stock bool: operator!=(BigInt: oper1, BigIntResult: oper2) {
     printf("bool: operator!=(BigInt: %d, BigIntResult: %d)", _: oper1, _: oper2);
 
-    (_: oper1) = ((oper1 == oper2) == false);
+    BigIntCmpR(_: oper1, oper2);
     // avoid destructor of BigInt
+    #emit not
+    #emit not
     #emit retn
 
     return false;
@@ -929,8 +998,10 @@ stock bool: operator!=(BigInt: oper1, BigIntResult: oper2) {
 stock bool: operator!=(BigInt: oper1, BigInt: oper2) {
     printf("bool: operator!=(BigInt: %d, BigInt: %d)", _: oper1, _: oper2);
 
-    (_: oper1) = ((oper1 == oper2) == false);
+    BigIntCmp(_: oper1, _: oper2);
     // avoid destructor of BigInt
+    #emit not
+    #emit not
     #emit retn
 
     return false;
@@ -939,14 +1010,16 @@ stock bool: operator!=(BigInt: oper1, BigInt: oper2) {
 stock bool: operator!=(BigIntResult: oper1, oper2) {
     printf("bool: operator!=(BigIntResult: %d, %d)", _: oper1, _: oper2);
 
-    return (oper1 != oper2);
+    return !!BigIntCmpRR(oper1, BigIntResult: BigIntFromInt(oper2));
 }
 
 stock bool: operator!=(BigInt: oper1, oper2) {
     printf("bool: operator!=(BigInt: %d, %d)", _: oper1, _: oper2);
 
-    oper2 = (oper1 != oper2);
+    BigIntCmpR(_: oper1, BigIntResult: BigIntFromInt(oper2));
     // avoid destructor of BigInt
+    #emit not
+    #emit not
     #emit retn
 
     return false;
@@ -955,21 +1028,15 @@ stock bool: operator!=(BigInt: oper1, oper2) {
 stock bool: operator<(BigIntResult: oper1, BigIntResult: oper2) {
     printf("bool: operator<(BigIntResult: %d, BigIntResult: %d)", _: oper1, _: oper2);
 
-    new result = (BigIntCmp(_: oper1, _: oper2) < 0);
-
-    HeapFree(BigIntGetSize(_: oper1) + BigIntGetSize(_: oper2));
-
-    return bool: result;
+    return BigIntCmpRR(oper1, oper2) == -1;
 }
 
 stock bool: operator<(BigIntResult: oper1, BigInt: oper2) {
     printf("bool: operator<(BigIntResult: %d, BigInt: %d)", _: oper1, _: oper2);
 
-    (_: oper2) = (BigIntCmp(_: oper1, _: oper2) < 0);
-
-    HeapFree(BigIntGetSize(_: oper1));
+    BigIntCmpR(_: oper2, oper1);
     // avoid destructor of BigInt
-    #emit load.s.pri oper2
+    #emit eq.c.pri 1 // operator order swapped
     #emit retn
 
     return false;
@@ -978,11 +1045,9 @@ stock bool: operator<(BigIntResult: oper1, BigInt: oper2) {
 stock bool: operator<(BigInt: oper1, BigIntResult: oper2) {
     printf("bool: operator<(BigInt: %d, BigIntResult: %d)", _: oper1, _: oper2);
 
-    (_: oper1) = (BigIntCmp(_: oper1, _: oper2) < 0);
-
-    HeapFree(BigIntGetSize(_: oper2));
+    BigIntCmpR(_: oper1, oper2);
     // avoid destructor of BigInt
-    #emit load.s.pri oper1
+    #emit eq.c.pri -1
     #emit retn
 
     return false;
@@ -991,8 +1056,9 @@ stock bool: operator<(BigInt: oper1, BigIntResult: oper2) {
 stock bool: operator<(BigInt: oper1, BigInt: oper2) {
     printf("bool: operator<(BigInt: %d, BigInt: %d)", _: oper1, _: oper2);
 
-    (_: oper1) = (BigIntCmp(_: oper1, _: oper2) < 0);
+    BigIntCmp(_: oper1, _: oper2);
     // avoid destructor of BigInt
+    #emit eq.c.pri -1
     #emit retn
 
     return false;
@@ -1001,20 +1067,21 @@ stock bool: operator<(BigInt: oper1, BigInt: oper2) {
 stock bool: operator<(BigIntResult: oper1, oper2) {
     printf("bool: operator<(BigIntResult: %d, %d)", _: oper1, _: oper2);
 
-    return (oper1 < BigIntResult: BigIntFromInt(oper2));
+    return BigIntCmpRR(oper1, BigIntResult: BigIntFromInt(oper2)) == -1;
 }
 
 stock bool: operator<(oper1, BigIntResult: oper2) {
     printf("bool: operator<(%d, BigIntResult: %d)", _: oper1, _: oper2);
 
-    return (BigIntResult: BigIntFromInt(oper1) < oper2);
+    return BigIntCmpRR(BigIntResult: BigIntFromInt(oper1), oper2) == -1;
 }
 
 stock bool: operator<(BigInt: oper1, oper2) {
     printf("bool: operator<(BigInt: %d, %d)", _: oper1, _: oper2);
 
-    oper2 = (oper1 < BigIntResult: BigIntFromInt(oper2));
+    BigIntCmpR(_: oper1, BigIntResult: BigIntFromInt(oper2));
     // avoid destructor of BigInt
+    #emit eq.c.pri -1
     #emit retn
 
     return false;
@@ -1023,8 +1090,9 @@ stock bool: operator<(BigInt: oper1, oper2) {
 stock bool: operator<(oper1, BigInt: oper2) {
     printf("bool: operator<(%d, BigInt: %d)", _: oper1, _: oper2);
 
-    oper1 = (BigIntResult: BigIntFromInt(oper1) < oper2);
+    BigIntCmpR(_: oper2, BigIntResult: BigIntFromInt(oper1));
     // avoid destructor of BigInt
+    #emit eq.c.pri 1 // operators swapped
     #emit retn
 
     return false;
@@ -1033,14 +1101,15 @@ stock bool: operator<(oper1, BigInt: oper2) {
 stock bool: operator>(BigIntResult: oper1, BigIntResult: oper2) {
     printf("bool: operator>(BigIntResult: %d, BigIntResult: %d)", _: oper1, _: oper2);
 
-    return oper2 < oper1;
+    return BigIntCmpRR(oper1, oper2) == 1;
 }
 
 stock bool: operator>(BigIntResult: oper1, BigInt: oper2) {
     printf("bool: operator>(BigIntResult: %d, BigInt: %d)", _: oper1, _: oper2);
 
-    (_: oper1) = oper2 < oper1;
+    BigIntCmpR(_: oper2, oper1);
     // avoid destructor of BigInt
+    #emit eq.c.pri -1
     #emit retn
 
     return false;
@@ -1049,8 +1118,9 @@ stock bool: operator>(BigIntResult: oper1, BigInt: oper2) {
 stock bool: operator>(BigInt: oper1, BigIntResult: oper2) {
     printf("bool: operator>(BigInt: %d, BigIntResult: %d)", _: oper1, _: oper2);
 
-    (_: oper1) = oper2 < oper1;
+    BigIntCmpR(_: oper1, oper2);
     // avoid destructor of BigInt
+    #emit eq.c.pri 1
     #emit retn
 
     return false;
@@ -1059,8 +1129,9 @@ stock bool: operator>(BigInt: oper1, BigIntResult: oper2) {
 stock bool: operator>(BigInt: oper1, BigInt: oper2) {
     printf("bool: operator>(BigInt: %d, BigInt: %d)", _: oper1, _: oper2);
 
-    (_: oper1) = oper2 < oper1;
+    BigIntCmp(_: oper1, _: oper2);
     // avoid destructor of BigInt
+    #emit eq.c.pri 1
     #emit retn
 
     return false;
@@ -1069,20 +1140,21 @@ stock bool: operator>(BigInt: oper1, BigInt: oper2) {
 stock bool: operator>(BigIntResult: oper1, oper2) {
     printf("bool: operator>(BigIntResult: %d, %d)", _: oper1, _: oper2);
 
-    return (oper2 < oper1);
+    return BigIntCmpRR(oper1, BigIntResult: BigIntFromInt(oper2)) == 1;
 }
 
 stock bool: operator>(oper1, BigIntResult: oper2) {
     printf("bool: operator>(%d, BigIntResult: %d)", _: oper1, _: oper2);
 
-    return (oper2 < oper1);
+    return BigIntCmpRR(BigIntResult: BigIntFromInt(oper1), oper2) == 1;
 }
 
 stock bool: operator>(BigInt: oper1, oper2) {
     printf("bool: operator>(BigInt: %d, %d)", _: oper1, _: oper2);
 
-    oper2 = (oper2 < oper1);
+    BigIntCmpR(_: oper1, BigIntResult: BigIntFromInt(oper2));
     // avoid destructor of BigInt
+    #emit eq.c.pri 1
     #emit retn
 
     return false;
@@ -1091,8 +1163,9 @@ stock bool: operator>(BigInt: oper1, oper2) {
 stock bool: operator>(oper1, BigInt: oper2) {
     printf("bool: operator>(%d, BigInt: %d)", _: oper1, _: oper2);
 
-    oper1 = (oper2 < oper1);
+    BigIntCmpR(_: oper2, BigIntResult: BigIntFromInt(oper1));
     // avoid destructor of BigInt
+    #emit eq.c.pri -1
     #emit retn
 
     return false;
@@ -1101,14 +1174,16 @@ stock bool: operator>(oper1, BigInt: oper2) {
 stock bool: operator<=(BigIntResult: oper1, BigIntResult: oper2) {
     printf("bool: operator<=(BigIntResult: %d, BigIntResult: %d)", _: oper1, _: oper2);
 
-    return ((oper2 < oper1) == false);
+    return BigIntCmpRR(oper1, oper2) != 1;
 }
 
 stock bool: operator<=(BigIntResult: oper1, BigInt: oper2) {
     printf("bool: operator<=(BigIntResult: %d, BigInt: %d)", _: oper1, _: oper2);
 
-    (_: oper2) = ((oper2 < oper1) == false);
+    BigIntCmpR(_: oper2, oper1);
     // avoid destructor of BigInt
+    #emit eq.c.pri -1 // operators swapped
+    #emit not
     #emit retn
 
     return false;
@@ -1117,8 +1192,10 @@ stock bool: operator<=(BigIntResult: oper1, BigInt: oper2) {
 stock bool: operator<=(BigInt: oper1, BigIntResult: oper2) {
     printf("bool: operator<=(BigInt: %d, BigIntResult: %d)", _: oper1, _: oper2);
 
-    (_: oper2) = ((oper2 < oper1) == false);
+    BigIntCmpR(_: oper1, oper2);
     // avoid destructor of BigInt
+    #emit eq.c.pri 1
+    #emit not
     #emit retn
 
     return false;
@@ -1127,8 +1204,10 @@ stock bool: operator<=(BigInt: oper1, BigIntResult: oper2) {
 stock bool: operator<=(BigInt: oper1, BigInt: oper2) {
     printf("bool: operator<=(BigInt: %d, BigInt: %d)", _: oper1, _: oper2);
 
-    (_: oper2) = ((oper2 < oper1) == false);
+    BigIntCmp(_: oper1, _: oper2);
     // avoid destructor of BigInt
+    #emit eq.c.pri 1
+    #emit not
     #emit retn
 
     return false;
@@ -1137,20 +1216,22 @@ stock bool: operator<=(BigInt: oper1, BigInt: oper2) {
 stock bool: operator<=(BigIntResult: oper1, oper2) {
     printf("bool: operator<=(BigIntResult: %d, %d)", _: oper1, _: oper2);
 
-    return ((oper2 < oper1) == false);
+    return BigIntCmpRR(oper1, BigIntResult: BigIntFromInt(oper2)) != 1;
 }
 
 stock bool: operator<=(oper1, BigIntResult: oper2) {
     printf("bool: operator<=(%d, BigIntResult: %d)", _: oper1, _: oper2);
 
-    return ((oper2 < oper1) == false);
+    return BigIntCmpRR(BigIntResult: BigIntFromInt(oper1), oper2) != 1;
 }
 
 stock bool: operator<=(BigInt: oper1, oper2) {
     printf("bool: operator<=(BigInt: %d, %d)", _: oper1, _: oper2);
 
-    oper2 = ((oper2 < oper1) == false);
+    BigIntCmpR(_: oper1, BigIntResult: BigIntFromInt(oper2));
     // avoid destructor of BigInt
+    #emit eq.c.pri 1
+    #emit not
     #emit retn
 
     return false;
@@ -1159,8 +1240,10 @@ stock bool: operator<=(BigInt: oper1, oper2) {
 stock bool: operator<=(oper1, BigInt: oper2) {
     printf("bool: operator<=(%d, BigInt: %d)", _: oper1, _: oper2);
 
-    oper1 = ((oper2 < oper1) == false);
+    BigIntCmpR(_: oper2, BigIntResult: BigIntFromInt(oper1));
     // avoid destructor of BigInt
+    #emit eq.c.pri -1 // operators swapped
+    #emit not
     #emit retn
 
     return false;
@@ -1169,14 +1252,16 @@ stock bool: operator<=(oper1, BigInt: oper2) {
 stock bool: operator>=(BigIntResult: oper1, BigIntResult: oper2) {
     printf("bool: operator>=(BigIntResult: %d, BigIntResult: %d)", _: oper1, _: oper2);
 
-    return ((oper1 < oper2) == false);
+    return BigIntCmpRR(oper1, oper2) != -1;
 }
 
 stock bool: operator>=(BigIntResult: oper1, BigInt: oper2) {
     printf("bool: operator>=(BigIntResult: %d, BigInt: %d)", _: oper1, _: oper2);
 
-    (_: oper2) = ((oper1 < oper2) == false);
+    BigIntCmpR(_: oper2, oper1);
     // avoid destructor of BigInt
+    #emit eq.c.pri 1
+    #emit not
     #emit retn
 
     return false;
@@ -1185,8 +1270,10 @@ stock bool: operator>=(BigIntResult: oper1, BigInt: oper2) {
 stock bool: operator>=(BigInt: oper1, BigIntResult: oper2) {
     printf("bool: operator>=(BigInt: %d, BigIntResult: %d)", _: oper1, _: oper2);
 
-    (_: oper2) = ((oper1 < oper2) == false);
+    BigIntCmpR(_: oper1, oper2);
     // avoid destructor of BigInt
+    #emit eq.c.pri -1
+    #emit not
     #emit retn
 
     return false;
@@ -1195,8 +1282,10 @@ stock bool: operator>=(BigInt: oper1, BigIntResult: oper2) {
 stock bool: operator>=(BigInt: oper1, BigInt: oper2) {
     printf("bool: operator>=(BigInt: %d, BigInt: %d)", _: oper1, _: oper2);
 
-    (_: oper2) = ((oper1 < oper2) == false);
+    BigIntCmp(_: oper1, _: oper2);
     // avoid destructor of BigInt
+    #emit eq.c.pri -1
+    #emit not
     #emit retn
 
     return false;
@@ -1205,20 +1294,22 @@ stock bool: operator>=(BigInt: oper1, BigInt: oper2) {
 stock bool: operator>=(BigIntResult: oper1, oper2) {
     printf("bool: operator>=(BigIntResult: %d, %d)", _: oper1, _: oper2);
 
-    return ((oper1 < oper2) == false);
+    return BigIntCmpRR(oper1, BigIntResult: BigIntFromInt(oper2)) != -1;
 }
 
 stock bool: operator>=(oper1, BigIntResult: oper2) {
     printf("bool: operator>=(%d, BigIntResult: %d)", _: oper1, _: oper2);
 
-    return ((oper1 < oper2) == false);
+    return BigIntCmpRR(BigIntResult: BigIntFromInt(oper1), oper2) != -1;
 }
 
 stock bool: operator>=(BigInt: oper1, oper2) {
     printf("bool: operator>=(BigInt: %d, %d)", _: oper1, _: oper2);
 
-    oper2 = ((oper1 < oper2) == false);
+    BigIntCmpR(_: oper1, BigIntResult: BigIntFromInt(oper2));
     // avoid destructor of BigInt
+    #emit eq.c.pri -1
+    #emit not
     #emit retn
 
     return false;
@@ -1227,20 +1318,28 @@ stock bool: operator>=(BigInt: oper1, oper2) {
 stock bool: operator>=(oper1, BigInt: oper2) {
     printf("bool: operator>=(%d, BigInt: %d)", _: oper1, _: oper2);
 
-    oper1 = ((oper1 < oper2) == false);
+    BigIntCmpR(_: oper2, BigIntResult: BigIntFromInt(oper1));
     // avoid destructor of BigInt
+    #emit eq.c.pri 1
+    #emit not
     #emit retn
 
     return false;
 }
 
 stock bool: operator!(BigIntResult: oper) {
-    return (oper == 0);
+    new zero;
+
+    return !BigIntCmpR(BigIntZero(zero), oper);
 }
 
 stock bool: operator!(BigInt: oper) {
-    (_: oper) = (oper == 0);
+    new zero;
+
+    BigIntCmp(BigIntZero(zero), _: oper);
     // avoid destructor of BigInt
+    #emit stack 4
+    #emit not
     #emit retn
 
     return false;
