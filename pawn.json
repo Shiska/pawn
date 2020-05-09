@@ -4,11 +4,11 @@
     "entry": "test.pwn",
     "output": "test.amx",
     "dependencies": [
-		"sampctl/pawn-stdlib",
-		"sampctl/samp-stdlib"
-	],
+        "sampctl/samp-stdlib"
+    ],
     "dev_dependencies": [
-        "pawn-lang/YSI-Includes@5.x"
+        "pawn-lang/YSI-Includes@5.x",
+        "Zeex/samp-plugin-crashdetect"
     ],
     "builds": [
         {
