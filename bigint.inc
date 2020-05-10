@@ -922,6 +922,47 @@ stock BigIntKaratsubaInternal(oper1, size1, oper2, size2) {
     return BigIntMov(low1, BigIntAdd(z0, z1));
 }
 
+stock BigIntPow(oper, pow) {
+    debug("BigIntPow(%d, %d)", oper, pow);
+
+    if(oper) {
+        if(pow < 0) {
+            // oper = BigIntInverse(oper);
+            pow *= -1;
+        }
+        if(pow == 0) {
+            return 1;
+        }
+        BigIntPrint(oper);
+
+        new dest;
+
+        #emit lctrl 2
+        #emit stor.s.pri dest
+        // skip even numbers
+        while(!(pow & 1)) {
+            oper = BigIntSquare(oper);
+            pow >>>= 1;
+        }
+        new result = oper;
+
+        while((pow >>>= 1)) {
+            oper = BigIntSquare(oper);
+
+            if(pow & 1) {
+                result = BigIntMul(oper, result);
+            }
+        }
+        BigIntPrint(result);
+
+        if(dest != result) {
+            return BigIntMov(dest, result);
+        }
+        return dest;
+    }
+    return 0;
+}
+
 stock BigIntShiftLeft(oper, lshift) { // inplace
     debug("BigIntShiftLeft(%d, %d)", oper, lshift);
 
@@ -1770,6 +1811,7 @@ stock bool: operator!(BigInt: oper) {
 
     return false;
 }
+
 // pass BigInt object as reference otherwise it would call the copy constructor
 stock BigIntGetValues(const & BigInt: address, dest[], const size = sizeof dest) {
     debug("BigIntGetValues(%d, %d)", _: address, size);

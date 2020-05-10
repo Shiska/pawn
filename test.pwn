@@ -218,3 +218,12 @@ Test:Karatsuba() {
     //     }
     // }
 }
+
+Test:Pow() {
+    new cBigInt: int1 = cellmax;
+    new cBigInt: int2 = int1 * int1;
+    new cBigInt: int3 = int2 * int2;
+    new cBigInt: int4 = BigIntResult: BigIntPow(_: int1, 4);
+
+    ASSERT(int3 == int4);
+}
