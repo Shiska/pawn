@@ -227,3 +227,26 @@ Test:Pow() {
 
     ASSERT(int3 == int4);
 }
+
+Test:Inv() {
+    new val32 = 55;
+    new inverse32 = findInverse32(val32);
+
+    ASSERT(inverse32 * val32 == 1);
+
+    printf("The 32-bit inverse of %d is %d (%x) \n", val32, inverse32, inverse32);
+}
+// https://lemire.me/blog/2017/09/18/computing-the-inverse-of-odd-integers/
+stock f32(x, y) {
+    return y * (2 - y * x);
+}
+
+stock findInverse32(x) {
+    new y = (3 * x) ^ 2;
+
+    y = f32(x, y);
+    y = f32(x, y);
+    y = f32(x, y);
+
+    return y;
+}

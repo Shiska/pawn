@@ -104,14 +104,10 @@ stock HeapFree(cells) {
     return 0;
 }
 
-enum BigIntFlags (<<= 1) {
-    bool: BigIntIsNeg = 1
-}
-
 stock BigIntAlloc(cells) {
     debug("BigIntAlloc(%d)", cells);
 
-    if(256 > cells > 0) {
+    if(cells > 0) {
         new address = HeapAlloc(cells);
 
         raw_memset(address, cells * 4, 0);
@@ -126,7 +122,7 @@ stock BigIntAlloc(cells) {
 stock BigIntRealloc(address, newsize) {
     debug("BigIntRealloc(%d, %d)", address, newsize);
 
-    if(address) {
+    if(address && newsize > 0) {
         new size = BigIntGetSize(address);
         new offset = newsize - size;
 
@@ -136,10 +132,27 @@ stock BigIntRealloc(address, newsize) {
             if(offset < 0) {
                 HeapFree(-offset);
             } else {
-                raw_memset(HeapAlloc(offset), offset * 4, 0);
+                raw_memset(HeapAlloc(offset), offset << 2, 0);
             }
             return offset;
         }
+    }
+    return 0;
+}
+
+stock BigIntCopy(address, alloc = 0) {
+    debug("BigIntCopy(%d, %d)", address, alloc);
+
+    if(address) {
+        new size = BigIntGetSize(address);
+        new copy = HeapAlloc((alloc += size));
+
+        raw_memset(copy, alloc << 2, 0);
+        raw_memcpy(copy, address, 0, size << 2, size);
+
+        BigIntSetSize(copy, alloc);
+
+        return copy;
     }
     return 0;
 }
@@ -156,7 +169,7 @@ stock BigIntFromInt(integer) {
     new int = BigIntAlloc(cells);
 
     if(isneg) {
-        BigIntSetFlags(int, BigIntIsNeg);
+        BigIntNeg(int);
     } {}
     #emit load.s.pri int
     #emit add.c 2
@@ -175,35 +188,6 @@ stock BigIntFromInt(integer) {
     BigIntPrint(int);
 
     return int;
-}
-
-stock BigIntZero(& zero) { // uses a local variable as storage
-    debug("BigIntZero(%d)", zero);
-
-    new addr;
-
-    zero = 0;
-
-    #emit load.s.pri zero
-    #emit stor.s.pri addr
-
-    BigIntSetSize(addr, 1);
-
-    return addr;
-}
-
-stock BigIntCopy(address, alloc = 0) {
-    debug("BigIntCopy(%d, %d)", address, alloc);
-
-    if(address) {
-        new size = BigIntGetSize(address);
-        new copy = BigIntAlloc(size + alloc);
-
-        raw_memcpy(copy + 1, address + 1, 0, size * 4 - 1, size);
-
-        return copy;
-    }
-    return 0;
 }
 
 stock BigIntFree(address) {
@@ -235,16 +219,46 @@ stock BigIntMov(dest, src) {
     return 0;
 }
 
+stock BigIntZero(& zero) { // uses a local variable as storage
+    debug("BigIntZero(%d)", zero);
+
+    new addr;
+
+    zero = 0;
+
+    #emit load.s.pri zero
+    #emit stor.s.pri addr
+
+    BigIntSetSize(addr, 1);
+
+    return addr;
+}
+
+enum BigIntHidden {
+    bool: eBigIntNeg, // Negative
+    bool: eBigIntInv, // Inverse
+}
+
 stock BigIntSetSize(address, cells) {
     debug("BigIntSetSize(%d, %d)", address, cells);
 
     if(address) {
+        const mask = (1 << _: BigIntHidden) - 1;
+
+        #emit load.s.pri address
+        #emit lodb.i 2
+        #emit const.alt mask
+        #emit and
+        #emit move.alt
         #emit load.s.pri cells
+        #emit shl.c.pri BigIntHidden
+        #emit or
         #emit load.s.alt address
-        #emit strb.i 1
+        #emit strb.i 2
+        #emit move.pri
         #emit retn
     }
-    return false;
+    return 0;
 }
 
 stock BigIntGetSize(address) {
@@ -252,36 +266,77 @@ stock BigIntGetSize(address) {
 
     if(address) {
         #emit load.s.pri address
-        #emit lodb.i 1
+        #emit lodb.i 2
+        #emit shr.c.pri BigIntHidden
         #emit retn
-    } {}
-    return false;
+    }
+    return 0;
 }
 
-stock BigIntSetFlags(address, BigIntFlags: flags) {
-    debug("BigIntSetFlags(%d, %08b)", address, _: flags);
+stock BigIntNeg(address) {
+    debug("BigIntNeg(%d)", address);
 
     if(address) {
+        const bit = 1 << _: eBigIntNeg;
+
         #emit load.s.pri address
-        #emit add.c 1
-        #emit move.alt
-        #emit load.s.pri flags
-        #emit strb.i 1
+        #emit lodb.i 2
+        #emit const.alt bit
+        #emit xor
+        #emit load.s.alt address
+        #emit strb.i 2
+        #emit move.pri
+        #emit retn
+    }
+    return 0;
+}
+
+stock bool: BigIntIsNeg(address) {
+    debug("BigIntIsNeg(%d)", address);
+
+    if(address) {
+        const bit = 1 << _: eBigIntNeg;
+
+        #emit load.s.pri address
+        #emit lodb.i 2
+        #emit const.alt bit
+        #emit and
         #emit retn
     }
     return false;
 }
 
-stock BigIntFlags: BigIntGetFlags(address) {
-    debug("BigIntGetFlags(%d)", address);
+stock BigIntInv(address) {
+    debug("BigIntInv(%d)", address);
 
     if(address) {
+        const bit = 1 << _: eBigIntInv;
+
         #emit load.s.pri address
-        #emit add.c 1
-        #emit lodb.i 1
+        #emit lodb.i 2
+        #emit const.alt bit
+        #emit xor
+        #emit load.s.alt address
+        #emit strb.i 2
+        #emit move.pri
         #emit retn
     }
-    return BigIntFlags: 0;
+    return 0;
+}
+
+stock bool: BigIntIsInv(address) {
+    debug("BigIntIsInv(%d)", address);
+
+    if(address) {
+        const bit = 1 << _: eBigIntInv;
+
+        #emit load.s.pri address
+        #emit lodb.i 2
+        #emit const.alt bit
+        #emit and
+        #emit retn
+    }
+    return false;
 }
 
 // removes empty cells at the end
@@ -326,7 +381,7 @@ stock BigIntPrint(address) {
     if(address) {
         new size = BigIntGetSize(address), value;
 
-        printf("    size %d flags %08b", size, _: BigIntGetFlags(address)); // error line
+        printf("    size %d hidden %016b", size, _: BigIntGetHidden(address)); // error line
 
         address += 2;
 
@@ -350,8 +405,8 @@ stock BigIntAdd(oper1, oper2) {
     debug("BigIntAdd(%d, %d)", oper1, oper2);
 
     if(oper1 && oper2) {
-        new bool: isneg1 = bool: (BigIntGetFlags(oper1) & BigIntIsNeg);
-        new bool: isneg2 = bool: (BigIntGetFlags(oper2) & BigIntIsNeg);
+        new bool: isneg1 = BigIntIsNeg(oper1);
+        new bool: isneg2 = BigIntIsNeg(oper2);
 
         if(isneg1 ^ isneg2) { // one operator is negative
             if(isneg1) { // switch to sub because we store everything as unsigned
@@ -368,8 +423,8 @@ stock BigIntSub(oper1, oper2) {
     debug("BigIntSub(%d, %d)", oper1, oper2);
 
     if(oper1 && oper2) { // same as BigIntAdd, except checks are inverted because isneg2 is mentally inverted due to subbing
-        new bool: isneg1 = bool: (BigIntGetFlags(oper1) & BigIntIsNeg);
-        new bool: isneg2 = bool: (BigIntGetFlags(oper2) & BigIntIsNeg);
+        new bool: isneg1 = BigIntIsNeg(oper1);
+        new bool: isneg2 = BigIntIsNeg(oper2);
 
         if(isneg1 ^ isneg2) { // two positive or two negative
             return BigIntAddInternal(oper1, oper2); // works because result tag depends on oper1
@@ -390,7 +445,7 @@ stock BigIntAddInternal(oper1, oper2) {
         new size1 = BigIntGetSize(oper1);
         new size2 = BigIntGetSize(oper2);
 
-        new bool: isneg = bool: (BigIntGetFlags(oper1) & BigIntIsNeg); // get it before swapping
+        new bool: isneg = BigIntIsNeg(oper1); // get it before swapping
         // switch operators if oper1 is smaller than oper2
         if(size1 < size2) {
             // switch sizes
@@ -470,7 +525,7 @@ stock BigIntAddInternal(oper1, oper2) {
             }
         }
         if(isneg) { // if any oper is negative result is negative
-            BigIntSetFlags(result, BigIntIsNeg);
+            BigIntNeg(result);
         }
         BigIntPrint(result);
 
@@ -569,7 +624,7 @@ stock BigIntSubInternal(oper1, oper2, bool: trim = true) {
             }
         }
         if(carry) {
-            BigIntNeg(result);
+            BigIntNegInternal(result);
         }
         if(trim) {
             BigIntPrint(result);
@@ -580,9 +635,9 @@ stock BigIntSubInternal(oper1, oper2, bool: trim = true) {
     }
     return 0;
 }
-// don't use this, use BigIntNegFlag instead
-stock BigIntNeg(oper) { // inplace
-    debug("BigIntNeg(%d)", oper);
+
+stock BigIntNegInternal(oper) { // inplace
+    debug("BigIntNegInternal(%d)", oper);
 
     if(oper) {
         new size = BigIntGetSize(oper);
@@ -621,19 +676,8 @@ stock BigIntNeg(oper) { // inplace
                 #emit stor.s.pri value
             }
         }
-        BigIntSetFlags(oper, BigIntGetFlags(oper) ^ BigIntIsNeg);
+        BigIntNeg(oper);
         BigIntPrint(oper);
-
-        return oper;
-    }
-    return 0;
-}
-
-stock BigIntNegFlag(oper) {
-    debug("BigIntNegFlag(%d)", oper);
-
-    if(oper) {
-        BigIntSetFlags(oper, BigIntGetFlags(oper) ^ BigIntIsNeg);
 
         return oper;
     }
@@ -753,8 +797,8 @@ stock BigIntMul(oper1, oper2) {
         }
         new result = BigIntAlloc(size1 + size2 + 1);
 
-        if((BigIntGetFlags(oper1) & BigIntIsNeg) ^ (BigIntGetFlags(oper2) & BigIntIsNeg)) {
-            BigIntSetFlags(result, BigIntIsNeg);
+        if(BigIntIsNeg(oper1) ^ BigIntIsNeg(oper2)) {
+            BigIntNeg(result);
         }
         BigIntPrint(_: oper1);
         BigIntPrint(_: oper2);
@@ -829,8 +873,8 @@ stock BigIntKaratsuba(oper1, oper2) {
         // free everything at once instead at the end of each recursive call
         BigIntMov(result, BigIntKaratsubaInternal(oper1, (BigIntGetSize(oper1) << 1) - 1, oper2, (BigIntGetSize(oper2) << 1) - 1));
 
-        if((BigIntGetFlags(oper1) & BigIntIsNeg) ^ (BigIntGetFlags(oper2) & BigIntIsNeg)) {
-            BigIntSetFlags(result, BigIntIsNeg);
+        if(BigIntIsNeg(oper1) ^ BigIntIsNeg(oper2)) {
+            BigIntNeg(result);
         }
         BigIntPrint(result);
         BigIntTrim(result);
@@ -904,8 +948,8 @@ stock BigIntKaratsubaInternal(oper1, size1, oper2, size2) {
     new alloc = ((size + 1) >>> 1); // additional cells to hold the shifted value
     new lshift = size << 4; // shift result to the correct position
     // readd sign to unsigned multiplication
-    if((BigIntGetFlags(lh1) & BigIntIsNeg) ^ (BigIntGetFlags(lh2) & BigIntIsNeg)) {
-        BigIntNegFlag(z1);
+    if(BigIntIsNeg(lh1) ^ BigIntIsNeg(lh2)) {
+        BigIntNeg(z1);
     }
     z1 = BigIntAdd(BigIntAdd(z0, z1), z2);
     z2 = BigIntCopy(z2, alloc);
@@ -927,7 +971,7 @@ stock BigIntPow(oper, pow) {
 
     if(oper) {
         if(pow < 0) {
-            // oper = BigIntInverse(oper);
+            // oper = BigIntInv(oper);
             pow *= -1;
         }
         if(pow == 0) {
@@ -1107,6 +1151,46 @@ stock BigIntShiftRight(oper, rshift) { // inplace
     return 0;
 }
 
+// stock msb(cell) {
+//     new r;
+
+//     if(cell & 0xFFFF0000) {
+//         cell >>>= 16;
+//         r = 16;
+//     }
+//     if(cell & 0xFF00) {
+//         cell >>>= 8;
+//         r |= 8;
+//     }
+//     if(cell & 0xF0) {
+//         cell >>>= 4;
+//         r |= 4;
+//     }
+//     if(cell & 0xC) {
+//         cell >>>= 2;
+//         r |= 2;
+//     }
+//     return r | (cell >>> 1);
+// }
+
+// stock BigIntPow(oper, power) {
+//     debug("BigIntPow(%d, %d)", oper, power);
+
+//     if(oper && power > 0) {
+//         new shifts[32], shift = 0, count = 0;
+
+//         while(power) {
+//             if(power & 1) {
+//                 shifts[count++] = shift;
+//                 debug("power %d count %d shift %d", power, count, shift);
+//             }
+//             power >>>= 1;
+//             shift++;
+//         }
+//     }
+//     return 0;
+// }
+
 stock BigIntToHex(address, dest[], const size = sizeof dest) {
     debug("BigIntToHex(%d, %d)", address, size);
 
@@ -1144,8 +1228,8 @@ stock BigIntCmp(oper1, oper2) { // -1, 0, 1 - oper1 is less than, equal or great
     debug("BigIntCmp(%d, %d)", oper1, oper2);
 
     if(oper1 && oper2) {
-        new bool: isneg1 = bool: (BigIntGetFlags(oper1) & BigIntIsNeg);
-        new bool: isneg2 = bool: (BigIntGetFlags(oper2) & BigIntIsNeg);
+        new bool: isneg1 = BigIntIsNeg(oper1);
+        new bool: isneg2 = BigIntIsNeg(oper2);
         // check sign
         if(isneg1 != isneg2) {
             return _: isneg2 - _: isneg1; // -1, 1
@@ -1264,7 +1348,7 @@ stock BigIntResult: operator-(BigIntResult: oper) {
 
     debug("BigIntResult: operator-(BigIntResult: %d)", _: oper);
     // faster than calling the function
-    #emit const.pri BigIntNegFlag
+    #emit const.pri BigIntNeg
     #emit add.c 4
     #emit sctrl 6
 
@@ -1276,7 +1360,7 @@ stock BigIntResult: operator-(BigInt: oper) {
 
     (_: oper) = BigIntCopy(_: oper);
     // avoid destructor of BigInt
-    #emit const.pri BigIntNegFlag
+    #emit const.pri BigIntNeg
     #emit add.c 4
     #emit sctrl 6
 
@@ -1824,8 +1908,8 @@ stock BigIntGetValues(const & BigInt: address, dest[], const size = sizeof dest)
 
         BigIntPrint(_: address);
 
-        if(BigIntGetFlags(_: address) & BigIntIsNeg) { // BigInts are always stored as absolute value / positive
-            new BigInt: int = BigIntResult: BigIntNeg(BigIntCopy(_: address)); // make a copy and negate it
+        if(BigIntIsNeg(_: address)) { // BigInts are always stored as absolute value / positive
+            new BigInt: int = BigIntResult: BigIntNegInternal(BigIntCopy(_: address)); // make a copy and negate it
 
             BigIntPrint(_: int);
 
@@ -1846,8 +1930,8 @@ stock BigIntGetHex(const & BigInt: address, dest[], const size = sizeof dest) {
     if(_: address) {
         BigIntPrint(_: address);
 
-        if(BigIntGetFlags(_: address) & BigIntIsNeg) { // BigInts are always stored as absolute value / positive
-            new BigInt: int = BigIntResult: BigIntNeg(BigIntCopy(_: address)); // make a copy and negate it
+        if(BigIntIsNeg(_: address)) { // BigInts are always stored as absolute value / positive
+            new BigInt: int = BigIntResult: BigIntNegInternal(BigIntCopy(_: address)); // make a copy and negate it
 
             BigIntPrint(_: int);
 
