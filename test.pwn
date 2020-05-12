@@ -49,9 +49,6 @@ Test:Operator() { // calls all operators at least once
     // BigIntResult: operator*(BigIntResult: oper1, oper2)                  - result * 5
     // BigIntResult: operator*(BigIntResult: oper1, BigIntResult: oper2)    - result * result
     new cBigInt: int6 = (int1 * 10) * (int1 * int2 * int2) * 5; // 31250
-    // shifting
-    BigIntShiftLeft(_: int6, 2225); // TODO: test
-    BigIntShiftRight(_: int6, 2225);
     // equal
     if(-int1 == -int2) {} // bool: operator==(BigIntResult: oper1, BigIntResult: oper2)
     if(int3 == -int4) {} // bool: operator==(BigInt: oper1, BigIntResult: oper2)
@@ -176,6 +173,13 @@ Test:Mul() {
     BigIntGetHex(int5, hex);
 
     ASSERT(strcmp(hex, "3FFFFFFF000000010") == 0);
+}
+
+Test:Shift() {
+    new cBigInt: int1 = 66666;
+
+    BigIntShiftLeft(_: int1, 15);
+    BigIntShiftRight(_: int1, 15);
 }
 
 Test:Karatsuba() {

@@ -104,14 +104,15 @@ stock HeapFree(cells) {
     return 0;
 }
 
-stock BigIntAlloc(cells) {
-    debug("BigIntAlloc(%d)", cells);
+stock BigIntAlloc(size) {
+    debug("BigIntAlloc(%d)", size);
 
-    if(cells > 0) {
+    if(size > 0) {
+        new cells = (size >>> 1) + 1;
         new address = HeapAlloc(cells);
 
-        raw_memset(address, cells * 4, 0);
-        BigIntSetSize(address, cells);
+        raw_memset(address, cells << 2, 0);
+        BigIntSetSize(address, size);
 
         return address;
     }
@@ -124,18 +125,16 @@ stock BigIntRealloc(address, newsize) {
 
     if(address && newsize > 0) {
         new size = BigIntGetSize(address);
-        new offset = newsize - size;
+        new cells = (newsize >>> 1) - (size >>> 1);
 
-        if(offset) {
-            BigIntSetSize(address, newsize);
-
-            if(offset < 0) {
-                HeapFree(-offset);
+        if(cells) {
+            if(cells < 0) {
+                HeapFree(-cells);
             } else {
-                raw_memset(HeapAlloc(offset), offset << 2, 0);
+                raw_memset(HeapAlloc(cells), cells << 2, 0);
             }
-            return offset;
         }
+        return BigIntSetSize(address, newsize);
     }
     return 0;
 }
@@ -145,10 +144,11 @@ stock BigIntCopy(address, alloc = 0) {
 
     if(address) {
         new size = BigIntGetSize(address);
-        new copy = HeapAlloc((alloc += size));
+        new cells = ((alloc += size) >>> 1) + 1;
+        new copy = HeapAlloc(cells);
 
-        raw_memset(copy, alloc << 2, 0);
-        raw_memcpy(copy, address, 0, size << 2, size);
+        raw_memset(copy, cells << 2, 0);
+        raw_memcpy(copy, address, 0, (size + 1) << 1, size);
 
         BigIntSetSize(copy, alloc);
 
@@ -157,19 +157,24 @@ stock BigIntCopy(address, alloc = 0) {
     return 0;
 }
 
-stock BigIntFromInt(integer) {
-    debug("BigIntFromInt(%d)", integer);
+stock BigIntFromInt(integer, bool: unsigned = false) { // TODO : finish chaing size to 16 bit words from cells
+    debug("BigIntFromInt(%d, %d)", integer, unsigned);
 
-    new bool: isneg = bool: (integer >>> 31);
+    new size, int;
 
-    if(isneg) {
-        integer *= -1;
-    }
-    new cells = (integer & 0xFFFF0000) ? 2 : 1;
-    new int = BigIntAlloc(cells);
+    if(unsigned) {
+        int = BigIntAlloc((size = (integer & 0xFFFF0000) ? 2 : 1));
+    } else {
+        new bool: isneg = bool: (integer >>> 31);
 
-    if(isneg) {
-        BigIntNeg(int);
+        if(isneg) {
+            integer *= -1;
+        }
+        int = BigIntAlloc((size = (integer & 0xFFFF0000) ? 2 : 1));
+
+        if(isneg) {
+            BigIntNeg(int);
+        }
     } {}
     #emit load.s.pri int
     #emit add.c 2
@@ -177,7 +182,7 @@ stock BigIntFromInt(integer) {
     #emit load.s.pri integer
     #emit strb.i 2
 
-    if(cells == 2) {
+    if(size == 2) {
         #emit load.s.pri int
         #emit add.c 4
         #emit move.alt
@@ -194,7 +199,7 @@ stock BigIntFree(address) {
     debug("BigIntFree(%d)", address);
 
     if(address) {
-        return HeapFree(BigIntGetSize(address));
+        return HeapFree(BigIntGetCells(address));
     }
     return false;
 }
@@ -204,10 +209,10 @@ stock BigIntMov(dest, src) {
     debug("BigIntMov(%d, %d)", dest, src);
 
     if(dest && src) {
-        new size = BigIntGetSize(src);
-        new bytes = size << 2;
+        new cells = BigIntGetCells(src);
+        new bytes = cells << 2;
 
-        raw_memcpy(dest, src, 0, bytes, size);
+        raw_memcpy(dest, src, 0, bytes, cells);
 
         #emit load.s.pri dest
         #emit load.s.alt bytes
@@ -239,7 +244,7 @@ enum BigIntHidden {
     bool: eBigIntInv, // Inverse
 }
 
-stock BigIntSetSize(address, cells) {
+stock BigIntSetSize(address, cells) { // size = number of 16 bit words
     debug("BigIntSetSize(%d, %d)", address, cells);
 
     if(address) {
@@ -261,13 +266,28 @@ stock BigIntSetSize(address, cells) {
     return 0;
 }
 
-stock BigIntGetSize(address) {
+stock BigIntGetSize(address) { // size = number of 16 bit words
     debug("BigIntGetSize(%d)", address);
 
     if(address) {
         #emit load.s.pri address
         #emit lodb.i 2
         #emit shr.c.pri BigIntHidden
+        #emit retn
+    }
+    return 0;
+}
+
+stock BigIntGetCells(address) {
+    debug("BigIntGetCells(%d)", address);
+
+    if(address) {
+        const shift = _: BigIntHidden + 1;
+        // (BigIntGetSize(address) >>> 1) + 1
+        #emit load.s.pri address
+        #emit lodb.i 2
+        #emit shr.c.pri shift
+        #emit add.c 1
         #emit retn
     }
     return 0;
@@ -283,6 +303,35 @@ stock BigIntNeg(address) {
         #emit lodb.i 2
         #emit const.alt bit
         #emit xor
+        #emit load.s.alt address
+        #emit strb.i 2
+        #emit move.pri
+        #emit retn
+    }
+    return 0;
+}
+
+stock BigIntSetNeg(address, bool: neg) {
+    debug("BigIntSetNeg(%d, %d)", address, neg);
+
+    if(address) {
+        const bit = 1 << _: eBigIntNeg;
+        const mask = ~bit;
+
+        if(neg) {
+            #emit load.s.pri address
+            #emit lodb.i 2
+            #emit const.alt bit
+            #emit or
+            #emit load.s.alt address
+            #emit strb.i 2
+            #emit move.pri
+            #emit retn
+        } {}
+        #emit load.s.pri address
+        #emit lodb.i 2
+        #emit const.alt mask
+        #emit and
         #emit load.s.alt address
         #emit strb.i 2
         #emit move.pri
@@ -324,6 +373,35 @@ stock BigIntInv(address) {
     return 0;
 }
 
+stock BigIntSetInv(address, bool: inv) {
+    debug("BigIntSetInv(%d, %d)", address, inv);
+
+    if(address) {
+        const bit = 1 << _: eBigIntInv;
+        const mask = ~bit;
+
+        if(inv) {
+            #emit load.s.pri address
+            #emit lodb.i 2
+            #emit const.alt bit
+            #emit or
+            #emit load.s.alt address
+            #emit strb.i 2
+            #emit move.pri
+            #emit retn
+        } {}
+        #emit load.s.pri address
+        #emit lodb.i 2
+        #emit const.alt mask
+        #emit and
+        #emit load.s.alt address
+        #emit strb.i 2
+        #emit move.pri
+        #emit retn
+    }
+    return 0;
+}
+
 stock bool: BigIntIsInv(address) {
     debug("BigIntIsInv(%d)", address);
 
@@ -345,60 +423,88 @@ stock BigIntTrim(address) {
     debug("BigIntTrim(%d)", address);
 
     if(address) {
-        new size = BigIntGetSize(address), value, addr;
-
-        #emit load.s.alt address
-        #emit load.s.pri size
-        #emit idxaddr
-        #emit stor.s.pri addr
-
-        new newsize = size;
-
-        while(newsize) {
-            addr -= 4;
-
-            #emit lref.s.pri addr
+        new size = BigIntGetSize(address), value, trim;
+        new addr = address + ((size + 1) << 1);
+        // check for empty cells
+        do {
+            #emit load.s.pri addr
+            #emit add.c -2
+            #emit stor.s.pri addr
+            #emit lodb.i 2
             #emit stor.s.pri value
 
             debug("    addr %d value %d", addr, value);
+        } while(!value && ++trim < size);
 
-            if(value) {
-                break;
-            }
-            newsize--;
+        if(trim) {
+            return BigIntRealloc(address, size - trim);
         }
-        if(size != newsize) {
-            BigIntRealloc(address, newsize);
-        }
-        return true;
+        return address;
     }
-    return false;
+    return 0;
 }
 
 stock BigIntPrint(address) {
     debug("BigIntPrint(%d)", address);
 
     if(address) {
-        new size = BigIntGetSize(address), value;
+        new size = BigIntGetSize(address);
 
-        printf("    size %d hidden %016b", size, _: BigIntGetHidden(address)); // error line
+        printf("    size %d isneg %d isinv %d", size, BigIntIsNeg(address), BigIntIsInv(address));
 
-        address += 2;
+        new addr = address + ((size + 1) << 1), value;
 
-        for(new i = 1; i < size; ++i) {
-            #emit lref.s.pri address
+        while(size--) {
+            #emit load.s.pri addr
+            #emit add.c -2
+            #emit stor.s.pri addr
+            #emit lodb.i 2
             #emit stor.s.pri value
 
-            printf("    value %s%10d %032b", (value >= 0) ? "+" : "", value, value);
-
-            address += 4;
-        } {}
-        #emit load.s.pri address
-        #emit lodb.i 2
-        #emit stor.s.pri value
-
-        printf("    value %s%10d %032b", (value >= 0) ? "+" : "", value, value);
+            printf("    value %5d %016b", value, value);
+        }
+        return address;
     }
+    return 0;
+}
+
+stock BigIntNegInternal(oper) { // inplace
+    debug("BigIntNegInternal(%d)", oper);
+
+    if(oper) {
+        new size = BigIntGetSize(oper);
+        new addr = oper;
+        new value;
+
+        BigIntPrint(oper);
+        // negative until value is not 0
+        while(!value && size) {
+            #emit load.s.pri addr
+            #emit add.c 2
+            #emit stor.s.pri addr
+            #emit move.alt
+            #emit lodb.i 2
+            #emit neg
+            #emit strb.i 2
+            #emit stor.s.pri value
+            #emit dec.s size
+        }
+        // invert remaining bytes
+        while(size) {
+            #emit load.s.pri addr
+            #emit add.c 2
+            #emit stor.s.pri addr
+            #emit move.alt
+            #emit lodb.i 2
+            #emit invert
+            #emit strb.i 2
+            #emit dec.s size
+        }
+        BigIntPrint(oper);
+
+        return oper;
+    }
+    return 0;
 }
 
 stock BigIntAdd(oper1, oper2) {
@@ -460,15 +566,14 @@ stock BigIntAddInternal(oper1, oper2) {
             #emit stor.s.alt oper1
         }
         new result = BigIntAlloc(size1);
+        new addr = result + 2;
+        new carry;
+        new i;
 
         BigIntPrint(_: oper1);
         BigIntPrint(_: oper2);
-
-        new carry = 0;
-        new i, j = size2 * 2;
-        new addr = result + 2;
         // add both values together
-        while(++i != j) {
+        while(i < size2) {
             #emit load.s.pri oper1
             #emit add.c 2
             #emit stor.s.pri oper1
@@ -488,21 +593,10 @@ stock BigIntAddInternal(oper1, oper2) {
             #emit const.pri 2
             #emit add
             #emit stor.s.pri addr
+            #emit inc.s i
         }
-        j = size1 * 2;
-
-        if(i == j) { // size1 == size2
-            if(carry) { // allocate additional cell
-                debug("Allocating additional cell - %d", carry);
-
-                #emit load.s.pri carry
-                #emit heap 4
-                #emit strb.i 2
-
-                BigIntSetSize(result, size1 + 1);
-            }
-        } else { // add missing bytes from bigger operator
-            // add carry
+        // add missing bytes from bigger operator
+        while(i < size1) {
             #emit load.s.pri oper1
             #emit add.c 2
             #emit stor.s.pri oper1
@@ -511,18 +605,21 @@ stock BigIntAddInternal(oper1, oper2) {
             #emit add
             #emit load.s.alt addr
             #emit strb.i 2
+            #emit shr.c.pri 16
+            #emit stor.s.pri carry
+            #emit const.pri 2
+            #emit add
+            #emit stor.s.pri addr
+            #emit inc.s i
+        }
+        if(carry) { // allocate additional cell
+            debug("Allocating additional cell - %d", carry);
 
-            while(++i != j) {
-                #emit load.s.pri addr
-                #emit add.c 2
-                #emit stor.s.pri addr
-                #emit move.alt
-                #emit load.s.pri oper1
-                #emit add.c 2
-                #emit stor.s.pri oper1
-                #emit lodb.i 2
-                #emit strb.i 2
-            }
+            BigIntRealloc(result, size1 + 1);
+
+            #emit load.s.pri carry
+            #emit load.s.alt addr
+            #emit strb.i 2
         }
         if(isneg) { // if any oper is negative result is negative
             BigIntNeg(result);
@@ -541,26 +638,17 @@ stock BigIntSubInternal(oper1, oper2, bool: trim = true) {
     if(oper1 && oper2) {
         new size1 = BigIntGetSize(oper1);
         new size2 = BigIntGetSize(oper2);
-        new minsize, maxsize;
-
+        new size, addr, result, carry;
+        // copy smaller operator into result to match sizes
         if(size1 < size2) {
-            minsize = size1;
-            maxsize = size2;
+            addr = oper1 = result = BigIntCopy(oper1, (size = size2) - size1);
         } else {
-            minsize = size2;
-            maxsize = size1;
+            addr = oper2 = result = BigIntCopy(oper2, (size = size1) - size2);
         }
-        new result = BigIntAlloc(maxsize);
-        new addr = result + 2;
-        new carry = 0;
-
         BigIntPrint(_: oper1);
         BigIntPrint(_: oper2);
-
-        minsize = (minsize << 1) - 1;
-        maxsize = (maxsize << 1) - 1 - minsize;
         // substract cells
-        while(minsize--) {
+        while(size) {
             #emit load.s.pri oper1
             #emit add.c 2
             #emit stor.s.pri oper1
@@ -573,58 +661,24 @@ stock BigIntSubInternal(oper1, oper2, bool: trim = true) {
             #emit sub.alt
             #emit load.s.alt carry
             #emit sub
-            #emit load.s.alt addr
+            #emit move.alt
+            #emit load.s.pri addr
+            #emit add.c 2
+            #emit stor.s.pri addr
+            #emit xchg
             #emit strb.i 2
             #emit shr.c.pri 31
             #emit stor.s.pri carry
+            #emit dec.s size
 
             debug("    subbing addresses (%d + %d)", oper1, oper2);
             BigIntPrint(result);
-
-            addr += 2;
-        } // add missing bytes from bigger operator
-        if(maxsize) {
-            if(size1 < size2) {
-                while(maxsize--) {
-                    #emit load.s.pri oper2
-                    #emit add.c 2
-                    #emit stor.s.pri oper2
-                    #emit lodb.i 2
-                    #emit neg
-                    #emit load.s.alt carry
-                    #emit sub
-                    #emit load.s.alt addr
-                    #emit strb.i 2
-                    #emit shr.c.pri 31
-                    #emit stor.s.pri carry
-
-                    debug("    subbing addresses (%d)", oper2);
-                    BigIntPrint(result);
-
-                    addr += 2;
-                }
-            } else {
-                while(maxsize--) {
-                    #emit load.s.pri oper1
-                    #emit add.c 2
-                    #emit stor.s.pri oper1
-                    #emit lodb.i 2
-                    #emit load.s.alt carry
-                    #emit sub
-                    #emit load.s.alt addr
-                    #emit strb.i 2
-                    #emit shr.c.pri 31
-                    #emit stor.s.pri carry
-
-                    debug("    subbing addresses (%d)", oper1);
-                    BigIntPrint(result);
-
-                    addr += 2;
-                }
-            }
         }
         if(carry) {
             BigIntNegInternal(result);
+            BigIntSetNeg(result, true);
+        } else {
+            BigIntSetNeg(result, false);
         }
         if(trim) {
             BigIntPrint(result);
@@ -636,54 +690,6 @@ stock BigIntSubInternal(oper1, oper2, bool: trim = true) {
     return 0;
 }
 
-stock BigIntNegInternal(oper) { // inplace
-    debug("BigIntNegInternal(%d)", oper);
-
-    if(oper) {
-        new size = BigIntGetSize(oper);
-        new addr = oper + 2;
-
-        BigIntPrint(oper);
-        // invert every cell
-        for(new i = 1; i != size; ++i) {
-            #emit lref.s.pri addr
-            #emit invert
-            #emit sref.s.pri addr
-
-            addr += 4;
-        } {}
-        #emit load.s.pri addr
-        #emit move.alt
-        #emit lodb.i 2
-        #emit invert
-        #emit strb.i 2
-        // add one
-        addr = oper + 2;
-
-        for(new i = 1, value; value == 0; ++i, addr += 4) {
-            if(i == size) {
-                #emit load.s.pri addr
-                #emit move.alt
-                #emit lodb.i 2
-                #emit add.c 1
-                #emit strb.i 2
-
-                break;
-            } else {
-                #emit lref.s.pri addr
-                #emit add.c 1
-                #emit sref.s.pri addr
-                #emit stor.s.pri value
-            }
-        }
-        BigIntNeg(oper);
-        BigIntPrint(oper);
-
-        return oper;
-    }
-    return 0;
-}
-
 stock BigIntSquare(oper) { // fast squaring by reusing duplicates terms
     debug("BigIntSquare(%d)", oper);
 
@@ -691,24 +697,30 @@ stock BigIntSquare(oper) { // fast squaring by reusing duplicates terms
         new size = BigIntGetSize(oper);
         // special case for size 1
         if(size == 1) {
-            return BigIntKaratsubaInternal(oper, 1, oper, 1);
+            #emit load.s.pri oper
+            #emit add.c 2
+            #emit lodb.i 2
+            #emit move.alt
+            #emit umul
+            #emit stor.s.pri size
+
+            return BigIntFromInt(size, true);
         }
-        new result = BigIntAlloc(size << 1);
+        new result = BigIntAlloc((size <<= 1));
 
         BigIntPrint(_: oper);
 
-        new loop = (size << 2) - 2;
-        new maddr = oper + loop; // last cell
+        new maddr = oper + size; // last cell
         new daddr = result + 2; // dest addr
         new laddr = oper + 2; // left addr
         new raddr = laddr; // right addr
-        new carry, mul, sum, left, right;
+        new carry, sum, left, right, div, mod;
 
-        while(--loop) {
+        while(--size) {
+            right = raddr;
+            left = laddr;
             sum = carry;
             carry = 0;
-            left = laddr;
-            right = raddr;
 
             while(left < right) {
                 #emit load.s.pri left
@@ -717,10 +729,15 @@ stock BigIntSquare(oper) { // fast squaring by reusing duplicates terms
                 #emit load.s.pri right
                 #emit lodb.i 2
                 #emit umul
-                #emit stor.s.pri mul
+                #emit const.alt 0x10000
+                #emit udiv // the first bit could be lost if shifted before udiv
+                #emit shl.c.pri 1
+                #emit stor.s.pri div
+                #emit shl.c.alt 1
+                #emit stor.s.alt mod
 
-                sum += (mul << 1) & 0xFFFF;
-                carry += mul >>> 15;
+                carry += div;
+                sum += mod;
                 right -= 2;
                 left += 2;
             }
@@ -729,10 +746,13 @@ stock BigIntSquare(oper) { // fast squaring by reusing duplicates terms
                 #emit lodb.i 2
                 #emit move.alt
                 #emit umul
-                #emit stor.s.pri mul
+                #emit const.alt 0x10000
+                #emit udiv
+                #emit stor.s.pri div
+                #emit stor.s.alt mod
 
-                sum += mul & 0xFFFF;
-                carry += mul >>> 16;
+                carry += div;
+                sum += mod;
             } {}
             #emit load.s.pri sum
             #emit load.s.alt daddr
@@ -749,14 +769,12 @@ stock BigIntSquare(oper) { // fast squaring by reusing duplicates terms
             }
             daddr += 2;
         }
-        while(carry) {
+        if(carry) {
             #emit load.s.pri carry
             #emit load.s.alt daddr
             #emit strb.i 2
             #emit shr.c.pri 16
             #emit stor.s.pri carry
-
-            daddr += 2;
         }
         BigIntPrint(result);
         BigIntTrim(result);
@@ -780,7 +798,17 @@ stock BigIntMul(oper1, oper2) {
         new size2 = BigIntGetSize(oper2);
         // special case for size 1
         if(size1 == 1 && size2 == 1) {
-            return BigIntKaratsubaInternal(oper1, 1, oper2, 1);
+            #emit load.s.pri oper1
+            #emit add.c 2
+            #emit lodb.i 2
+            #emit move.alt
+            #emit load.s.pri oper2
+            #emit add.c 2
+            #emit lodb.i 2
+            #emit umul
+            #emit stor.s.pri size1
+
+            return BigIntFromInt(size1, true);
         }
         // switch operators if oper1 is smaller than oper2
         if(size1 < size2) {
@@ -795,7 +823,7 @@ stock BigIntMul(oper1, oper2) {
             #emit stor.s.pri oper2
             #emit stor.s.alt oper1
         }
-        new result = BigIntAlloc(size1 + size2 + 1);
+        new result = BigIntAlloc(size1 + size2);
 
         if(BigIntIsNeg(oper1) ^ BigIntIsNeg(oper2)) {
             BigIntNeg(result);
@@ -803,28 +831,33 @@ stock BigIntMul(oper1, oper2) {
         BigIntPrint(_: oper1);
         BigIntPrint(_: oper2);
         // long multiplication
-        new carry, value2;
+        new carry, o2value;
         new raddr, raddrbase = result;
-        new o1addr, o2addr = oper2 + 2;
-        new i1, j1 = size1 * 2, i2, j2 = size2 * 2;
+        new o1addr, o2addr = oper2;
+        new i1, i2;
 
-        for(i2 = 1; i2 != j2; ++i2) {
+        for(i2 = 0; i2 != size2; ++i2) {
             #emit load.s.pri o2addr
+            #emit add.c 2
+            #emit stor.s.pri o2addr
             #emit lodb.i 2
-            #emit stor.s.pri value2
+            #emit stor.s.pri o2value
 
             carry = 0;
-            o2addr += 2;
-            o1addr = oper1 + 2;
-            raddr = (raddrbase += 2);
+            o1addr = oper1;
+            raddrbase = (raddr = raddrbase) + 2;
 
-            for(i1 = 1; i1 != j1; ++i1) { // result += carry + oper1 + oper2
+            for(i1 = 0; i1 != size1; ++i1) { // result += carry + oper1 + oper2
                 #emit load.s.pri o1addr
+                #emit add.c 2
+                #emit stor.s.pri o1addr
                 #emit lodb.i 2
-                #emit load.s.alt value2
+                #emit load.s.alt o2value
                 #emit umul
                 #emit move.alt
                 #emit load.s.pri raddr
+                #emit add.c 2
+                #emit stor.s.pri raddr
                 #emit lodb.i 2
                 #emit add
                 #emit load.s.alt carry
@@ -835,11 +868,10 @@ stock BigIntMul(oper1, oper2) {
                 #emit stor.s.pri carry
 
                 BigIntPrint(result);
-
-                o1addr += 2;
-                raddr += 2;
             } {}
             #emit load.s.pri raddr
+            #emit add.c 2
+            #emit stor.s.pri raddr
             #emit lodb.i 2
             #emit load.s.alt carry
             #emit add
@@ -871,7 +903,7 @@ stock BigIntKaratsuba(oper1, oper2) {
         #emit stor.s.pri result
 
         // free everything at once instead at the end of each recursive call
-        BigIntMov(result, BigIntKaratsubaInternal(oper1, (BigIntGetSize(oper1) << 1) - 1, oper2, (BigIntGetSize(oper2) << 1) - 1));
+        BigIntMov(result, BigIntKaratsubaInternal(oper1, oper2));
 
         if(BigIntIsNeg(oper1) ^ BigIntIsNeg(oper2)) {
             BigIntNeg(result);
@@ -885,81 +917,63 @@ stock BigIntKaratsuba(oper1, oper2) {
     return 0;
 }
 
-stock BigIntKaratsubaInternal(oper1, size1, oper2, size2) {
-    debug("BigIntKaratsubaInternal(%d, %d, %d %d)", oper1, size1, oper2, size2);
+stock BigIntKaratsubaInternal(oper1, oper2) {
+    debug("BigIntKaratsubaInternal(%d, %d)", oper1, oper2);
+
+    new size1 = BigIntGetSize(oper1);
+    new size2 = BigIntGetSize(oper2);
+
+    oper1 += 2;
+    oper2 += 2;
 
     if(size1 == 1 && size2 == 1) {
         #emit load.s.pri oper1
-        #emit add.c 2
         #emit lodb.i 2
         #emit move.alt
         #emit load.s.pri oper2
-        #emit add.c 2
         #emit lodb.i 2
         #emit umul
-        #emit stor.s.pri oper1
-        #emit shr.c.pri 16
-        #emit stor.s.pri oper2
+        #emit stor.s.pri size1
 
-        if(oper2) {
-            size1 = BigIntAlloc(2);
-
-            #emit load.s.pri size1
-            #emit add.c 4
-            #emit move.alt
-            #emit load.s.pri oper2
-            #emit strb.i 2
-        } else {
-            size1 = BigIntAlloc(1);
-        } {}
-        #emit load.s.pri size1
-        #emit add.c 2
-        #emit move.alt
-        #emit load.s.pri oper1
-        #emit strb.i 2
-
-        BigIntPrint(size1);
-
-        return size1;
+        return BigIntFromInt(size1, true);
     }
-    new size = max(size1, size2) >> 1;
+    new size = max(size1, size2) >>> 1;
     new bytes = size << 1;
 
     new osize1 = size1 - size;
     new osize2 = size2 - size;
     // split the integers into two parts
-    new low1 = BigIntAlloc((size + 2) >>> 1);
-    new low2 = BigIntAlloc((size + 2) >>> 1);
-    new high1 = BigIntAlloc((osize1 + 2) >>> 1);
-    new high2 = BigIntAlloc((osize2 + 2) >>> 1);
+    new low1 = BigIntAlloc(size);
+    new low2 = BigIntAlloc(size);
+    new high1 = BigIntAlloc(osize1);
+    new high2 = BigIntAlloc(osize2);
 
-    raw_memcpy(low1, oper1 + 2, 2, bytes, bytes);
-    raw_memcpy(low2, oper2 + 2, 2, bytes, bytes);
-    raw_memcpy(high1, oper1 + 2 + bytes, 2, osize1 << 1, osize1 << 1);
-    raw_memcpy(high2, oper2 + 2 + bytes, 2, osize2 << 1, osize2 << 1);
+    raw_memcpy(low1, oper1, 2, bytes, bytes);
+    raw_memcpy(low2, oper2, 2, bytes, bytes);
+    raw_memcpy(high1, oper1 + bytes, 2, osize1 << 1, osize1);
+    raw_memcpy(high2, oper2 + bytes, 2, osize2 << 1, osize2);
 
     new lh1 = BigIntSubInternal(low1, high1, false);
     new lh2 = BigIntSubInternal(high2, low2, false);
     // do it
-    new z0 = BigIntKaratsubaInternal(low1, size, low2, size);
-    new z1 = BigIntKaratsubaInternal(lh1, osize1, lh2, osize2);
-    new z2 = BigIntKaratsubaInternal(high1, osize1, high2, osize2);
+    new z0 = BigIntKaratsubaInternal(low1, low2);
+    new z1 = BigIntKaratsubaInternal(lh1, lh2);
+    new z2 = BigIntKaratsubaInternal(high1, high2);
     // (z2 << (2 * lshift)) + ((z0 + z1 + z2) << lshift) + z0
-    new alloc = ((size + 1) >>> 1); // additional cells to hold the shifted value
     new lshift = size << 4; // shift result to the correct position
     // readd sign to unsigned multiplication
     if(BigIntIsNeg(lh1) ^ BigIntIsNeg(lh2)) {
         BigIntNeg(z1);
     }
     z1 = BigIntAdd(BigIntAdd(z0, z1), z2);
-    z2 = BigIntCopy(z2, alloc);
+    z2 = BigIntCopy(z2, size);
 
     BigIntShiftLeft(z2, lshift);
     BigIntTrim(z2);
 
     z1 = BigIntAdd(z1, z2);
 
-    BigIntRealloc(z1, BigIntGetSize(z1) + alloc);
+    BigIntRealloc(z1, BigIntGetSize(z1) + size);
     BigIntShiftLeft(z1, lshift);
     BigIntTrim(z1);
 
@@ -1011,22 +1025,22 @@ stock BigIntShiftLeft(oper, lshift) { // inplace
     debug("BigIntShiftLeft(%d, %d)", oper, lshift);
 
     if(oper && lshift > 0) {
-        new offset = (lshift >> 4);
+        new offset = lshift >>> 4;
         new size = BigIntGetSize(oper);
+        new addr = oper + ((size + 1) << 1);
+        new rshift = 16 - (lshift &= 0xF);
+        new tmp;
 
         BigIntPrint(oper);
 
-        lshift &= 0xF;
-        oper += (size << 2) - 2;
-        size = (size << 1) - 1 - offset;
+        size -= offset;
         offset <<= 1;
-
-        new tmp;
-        new rshift = 16 - lshift;
 
         if(size >= 1) {
             while(--size) { // oper[i] = (oper[i - offset] << lshift) | (oper[i - offset - 1] >>> rshift);
-                #emit load.s.pri oper
+                #emit load.s.pri addr
+                #emit add.c -2
+                #emit stor.s.pri addr
                 #emit load.s.alt offset
                 #emit sub
                 #emit stor.s.pri tmp // first cell
@@ -1042,35 +1056,31 @@ stock BigIntShiftLeft(oper, lshift) { // inplace
                 #emit shr // second result
                 #emit load.s.alt tmp
                 #emit or
-                #emit load.s.alt oper
+                #emit load.s.alt addr
                 #emit strb.i 2
-                #emit const.pri 2
-                #emit sub.alt
-                #emit stor.s.pri oper
             } {}
             // last affected cell
-            #emit load.s.pri oper
+            #emit load.s.pri addr
+            #emit add.c -2
+            #emit stor.s.pri addr
             #emit load.s.alt offset
             #emit sub
             #emit lodb.i 2
             #emit load.s.alt lshift
             #emit shl
-            #emit load.s.alt oper
+            #emit load.s.alt addr
             #emit strb.i 2
-            #emit const.pri 2
-            #emit sub.alt
-            #emit stor.s.pri oper
         }
         if(offset) { // clear all remaining cells
             size += offset >>> 1;
 
             while(size--) {
+                #emit load.s.pri addr
+                #emit add.c -2
+                #emit stor.s.pri addr
+                #emit move.alt
                 #emit zero.pri
-                #emit load.s.alt oper
                 #emit strb.i 2
-                #emit const.pri 2
-                #emit sub.alt
-                #emit stor.s.pri oper
             }
         }
         BigIntPrint(oper);
@@ -1084,22 +1094,22 @@ stock BigIntShiftRight(oper, rshift) { // inplace
     debug("BigIntShiftRight(%d, %d)", oper, rshift);
 
     if(oper && rshift > 0) {
-        new offset = (rshift >> 4);
+        new offset = rshift >>> 4;
         new size = BigIntGetSize(oper);
+        new lshift = 16 - (rshift &= 0xF);
+        new addr = oper;
+        new tmp;
 
         BigIntPrint(oper);
 
-        oper += 2;
-        rshift &= 0xF;
-        size = (size << 1) - 1 - offset;
+        size -= offset;
         offset <<= 1;
-
-        new tmp;
-        new lshift = 16 - rshift;
 
         if(size >= 1) {
             while(--size) { // oper[i] = (oper[i + offset] << lshift) | (oper[i + offset + 1] >>> rshift);
-                #emit load.s.pri oper
+                #emit load.s.pri addr
+                #emit add.c 2
+                #emit stor.s.pri addr
                 #emit load.s.alt offset
                 #emit add
                 #emit stor.s.pri tmp // first cell
@@ -1115,37 +1125,35 @@ stock BigIntShiftRight(oper, rshift) { // inplace
                 #emit shl // second result
                 #emit load.s.alt tmp
                 #emit or
-                #emit load.s.alt oper
+                #emit load.s.alt addr
                 #emit strb.i 2
-                #emit const.pri 2
-                #emit add
-                #emit stor.s.pri oper
             } {}
             // last affected cell
-            #emit load.s.pri oper
+            #emit load.s.pri addr
+            #emit add.c 2
+            #emit stor.s.pri addr
             #emit load.s.alt offset
             #emit add
             #emit lodb.i 2
             #emit load.s.alt rshift
             #emit shr
-            #emit load.s.alt oper
+            #emit load.s.alt addr
             #emit strb.i 2
-            #emit const.pri 2
-            #emit add
-            #emit stor.s.pri oper
         }
         if(offset) { // clear all remaining cells
             size += offset >>> 1;
 
             while(size--) {
+                #emit load.s.pri addr
+                #emit add.c 2
+                #emit stor.s.pri addr
+                #emit move.alt
                 #emit zero.pri
-                #emit load.s.alt oper
                 #emit strb.i 2
-                #emit const.pri 2
-                #emit add
-                #emit stor.s.pri oper
             }
         }
+        BigIntPrint(oper);
+
         return oper;
     }
     return 0;
@@ -1195,17 +1203,19 @@ stock BigIntToHex(address, dest[], const size = sizeof dest) {
     debug("BigIntToHex(%d, %d)", address, size);
 
     if(address && size > 0) {
-        new isize = BigIntGetSize(address);
-        new addr = address + (isize << 2);
-        new idx;
+        new idx, addr = address + (BigIntGetCells(address) << 2), j, h, hex;
 
-        for(new j, h, hex; (addr -= 2) != address; ) {
+        address += 2;
+
+        while(addr != address) {
             #emit load.s.pri addr
+            #emit add.c -2
+            #emit stor.s.pri addr
             #emit lodb.i 2
             #emit stor.s.pri hex
 
             for(j = 0; j != 4 && idx < size; ++j) {
-                h = (hex >> 12 )& 0xF;
+                h = (hex >>> 12) & 0xF;
                 hex <<= 4;
 
                 if(!idx && !h) { // skip leading zeros
@@ -1242,7 +1252,7 @@ stock BigIntCmp(oper1, oper2) { // -1, 0, 1 - oper1 is less than, equal or great
             return clamp(size1 - size2, -1, 1); // checking for -1 and 1 produces less opcode than checking for positive / negative
         }
         // compare bytes if size match
-        return raw_memcmp(oper1, oper2, size1 << 2); // -1, 0, 1
+        return raw_memcmp(oper1, oper2, (size1 + 1) << 1); // -1, 0, 1
     }
     return 0;
 }
@@ -1250,7 +1260,7 @@ stock BigIntCmp(oper1, oper2) { // -1, 0, 1 - oper1 is less than, equal or great
 stock BigIntCmpR(oper1, BigIntResult: oper2) {
     new result = BigIntCmp(oper1, _: oper2);
 
-    HeapFree(BigIntGetSize(_: oper2));
+    HeapFree(BigIntGetCells(_: oper2));
 
     return result;
 }
@@ -1258,7 +1268,7 @@ stock BigIntCmpR(oper1, BigIntResult: oper2) {
 stock BigIntCmpRR(BigIntResult: oper1, BigIntResult: oper2) {
     new result = BigIntCmp(_: oper1, _: oper2);
 
-    HeapFree(BigIntGetSize(_: oper1) + BigIntGetSize(_: oper2));
+    HeapFree(BigIntGetCells(_: oper1) + BigIntGetCells(_: oper2));
 
     return result;
 }
@@ -1272,15 +1282,9 @@ stock operator~(const BigInt: oper[], size) {
 }
 
 stock BigInt: operator=(oper) {
-    #pragma unused oper
-
     debug("BigInt: operator=(%d)", oper);
 
-    #emit const.pri BigIntFromInt
-    #emit add.c 4
-    #emit sctrl 6
-
-    return BigInt: 0;
+    return BigInt: BigIntFromInt(oper);
 }
 
 stock BigInt: operator=(BigIntResult: oper) {
@@ -1915,11 +1919,11 @@ stock BigIntGetValues(const & BigInt: address, dest[], const size = sizeof dest)
 
             raw_memset(destaddr, size * 4, -1); // fill dest array with 1s
 
-            return raw_memcpy(destaddr, _: int + 2, 0, (BigIntGetSize(_: int) << 2) - 2, size);
+            return raw_memcpy(destaddr, _: int + 2, 0, BigIntGetSize(_: int) << 1, size);
         }
         raw_memset(destaddr, size * 4, 0); // clear dest array
 
-        return raw_memcpy(destaddr, _: address + 2, 0, (BigIntGetSize(_: address) << 2) - 2, size);
+        return raw_memcpy(destaddr, _: address + 2, 0, BigIntGetSize(_: address) << 1, size);
     }
     return 0;
 }
