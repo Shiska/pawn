@@ -179,8 +179,8 @@ stock BigIntCopy(address, alloc = 0) {
     return 0;
 }
 
-stock BigIntFromInt(integer, bool: unsigned = false) { // TODO : finish chaing size to 16 bit words from cells
-    debug("BigIntFromInt(%d, %d)", integer, unsigned);
+stock BigInt(integer, bool: unsigned = false) { // TODO : finish chaing size to 16 bit words from cells
+    debug("BigInt(%d, %d)", integer, unsigned);
 
     new size, int;
 
@@ -943,7 +943,7 @@ stock BigIntSquare(oper) {
             #emit umul
             #emit stor.s.pri size
 
-            return BigIntFromInt(size, true);
+            return BigInt(size, true);
         }
         new result = BigIntAlloc((size <<= 1));
 
@@ -1069,7 +1069,7 @@ stock BigIntMul(oper1, oper2) {
             #emit umul
             #emit stor.s.pri size1
 
-            return BigIntFromInt(size1, true);
+            return BigInt(size1, true);
         }
         // switch operators if oper1 is smaller than oper2
         if(size1 < size2) {
@@ -1199,7 +1199,7 @@ stock BigIntKaratsubaInternal(oper1, oper2) {
         #emit umul
         #emit stor.s.pri size1
 
-        return BigIntFromInt(size1, true);
+        return BigInt(size1, true);
     }
     new size = max(size1, size2) >>> 1;
     new bytes = size << 1;
@@ -1628,7 +1628,7 @@ stock operator~(const BigInt: oper[], size) {
 stock BigInt: operator=(oper) {
     debug("BigInt: operator=(%d)", oper);
 
-    return BigInt: BigIntFromInt(oper);
+    return BigInt: BigInt(oper);
 }
 
 stock BigInt: operator=(BigIntResult: oper) {
@@ -1676,7 +1676,7 @@ stock BigIntResult: operator+(BigInt: oper1, BigInt: oper2) {
 stock BigIntResult: operator+(BigInt: oper1, oper2) {
     debug("BigIntResult: operator+(BigInt: %d, %d)", _: oper1, _: oper2);
 
-    oper2 = BigIntFromInt(oper2);
+    oper2 = BigInt(oper2);
 
     BigIntMov(oper2, BigIntAdd(_: oper1, oper2));
     // avoid destructor of BigInt
@@ -1688,7 +1688,7 @@ stock BigIntResult: operator+(BigInt: oper1, oper2) {
 stock BigIntResult: operator+(BigIntResult: oper1, oper2) {
     debug("BigIntResult: operator+(BigIntResult: %d, %d)", _: oper1, _: oper2);
 
-    return BigIntResult: BigIntMov(_: oper1, BigIntAdd(_: oper1, BigIntFromInt(_: oper2)));
+    return BigIntResult: BigIntMov(_: oper1, BigIntAdd(_: oper1, BigInt(_: oper2)));
 }
 
 stock BigIntResult: operator-(BigIntResult: oper) {
@@ -1754,7 +1754,7 @@ stock BigIntResult: operator-(BigInt: oper1, BigInt: oper2) {
 stock BigIntResult: operator-(BigInt: oper1, oper2) {
     debug("BigIntResult: operator-(BigInt: %d, %d)", _: oper1, _: oper2);
 
-    oper2 = BigIntFromInt(oper2);
+    oper2 = BigInt(oper2);
 
     BigIntMov(oper2, BigIntSub(_: oper1, oper2));
     // avoid destructor of BigInt
@@ -1766,7 +1766,7 @@ stock BigIntResult: operator-(BigInt: oper1, oper2) {
 stock BigIntResult: operator-(oper1, BigInt: oper2) {
     debug("BigIntResult: operator-(%d, BigInt: %d)", _: oper1, _: oper2);
 
-    oper1 = BigIntFromInt(oper1);
+    oper1 = BigInt(oper1);
 
     BigIntMov(oper1, BigIntSub(oper1, _: oper2));
     // avoid destructor of BigInt
@@ -1778,13 +1778,13 @@ stock BigIntResult: operator-(oper1, BigInt: oper2) {
 stock BigIntResult: operator-(BigIntResult: oper1, oper2) {
     debug("BigIntResult: operator-(BigIntResult: %d, %d)", _: oper1, _: oper2);
 
-    return BigIntResult: BigIntMov(_: oper1, BigIntSub(_: oper1, BigIntFromInt(oper2)));
+    return BigIntResult: BigIntMov(_: oper1, BigIntSub(_: oper1, BigInt(oper2)));
 }
 
 stock BigIntResult: operator-(oper1, BigIntResult: oper2) {
     debug("BigIntResult: operator-(%d, BigIntResult: %d)", _: oper1, _: oper2);
 
-    return BigIntResult: BigIntMov(_: oper2, BigIntSub(BigIntFromInt(oper1), _: oper2));
+    return BigIntResult: BigIntMov(_: oper2, BigIntSub(BigInt(oper1), _: oper2));
 }
 
 stock BigIntResult: operator*(BigIntResult: oper1, BigIntResult: oper2) {
@@ -1816,7 +1816,7 @@ stock BigIntResult: operator*(BigInt: oper1, BigInt: oper2) {
 stock BigIntResult: operator*(BigInt: oper1, oper2) {
     debug("BigIntResult: operator*(BigInt: %d, %d)", _: oper1, _: oper2);
 
-    oper2 = BigIntFromInt(oper2);
+    oper2 = BigInt(oper2);
 
     BigIntMov(oper2, BigIntMul(_: oper1, oper2));
     // avoid destructor of BigInt
@@ -1828,7 +1828,7 @@ stock BigIntResult: operator*(BigInt: oper1, oper2) {
 stock BigIntResult: operator*(BigIntResult: oper1, oper2) {
     debug("BigIntResult: operator*(BigIntResult: %d, %d)", _: oper1, _: oper2);
 
-    return BigIntResult: BigIntMov(_: oper1, BigIntMul(_: oper1, BigIntFromInt(oper2)));
+    return BigIntResult: BigIntMov(_: oper1, BigIntMul(_: oper1, BigInt(oper2)));
 }
 
 stock BigIntResult: operator/(BigIntResult: oper1, BigIntResult: oper2) {
@@ -1886,7 +1886,7 @@ stock BigIntResult: operator/(BigInt: oper1, oper2) {
 
     new quotient, remainder;
 
-    oper2 = BigIntFromInt(oper2);
+    oper2 = BigInt(oper2);
 
     BigIntDiv(_: oper1, oper2, quotient, remainder);
     BigIntMov(oper2, quotient);
@@ -1902,7 +1902,7 @@ stock BigIntResult: operator/(oper1, BigInt: oper2) {
 
     new quotient, remainder;
 
-    oper1 = BigIntFromInt(oper1);
+    oper1 = BigInt(oper1);
 
     BigIntDiv(oper1, _: oper2, quotient, remainder);
     BigIntMov(oper1, quotient);
@@ -1918,7 +1918,7 @@ stock BigIntResult: operator/(BigIntResult: oper1, oper2) {
 
     new quotient, remainder;
 
-    BigIntDiv(_: oper1, BigIntFromInt(oper2), quotient, remainder);
+    BigIntDiv(_: oper1, BigInt(oper2), quotient, remainder);
 
     return BigIntResult: BigIntMov(_: oper1, quotient);
 }
@@ -1928,7 +1928,7 @@ stock BigIntResult: operator/(oper1, BigIntResult: oper2) {
 
     new quotient, remainder;
 
-    BigIntDiv(BigIntFromInt(oper1), _: oper2, quotient, remainder);
+    BigIntDiv(BigInt(oper1), _: oper2, quotient, remainder);
 
     return BigIntResult: BigIntMov(_: oper2, quotient);
 }
@@ -1988,7 +1988,7 @@ stock BigIntResult: operator%(BigInt: oper1, oper2) {
 
     new quotient, remainder;
 
-    oper2 = BigIntFromInt(oper2);
+    oper2 = BigInt(oper2);
 
     BigIntDiv(_: oper1, oper2, quotient, remainder);
     BigIntMov(oper2, remainder);
@@ -2004,7 +2004,7 @@ stock BigIntResult: operator%(oper1, BigInt: oper2) {
 
     new quotient, remainder;
 
-    oper1 = BigIntFromInt(oper1);
+    oper1 = BigInt(oper1);
 
     BigIntDiv(oper1, _: oper2, quotient, remainder);
     BigIntMov(oper1, remainder);
@@ -2020,7 +2020,7 @@ stock BigIntResult: operator%(BigIntResult: oper1, oper2) {
 
     new quotient, remainder;
 
-    BigIntDiv(_: oper1, BigIntFromInt(oper2), quotient, remainder);
+    BigIntDiv(_: oper1, BigInt(oper2), quotient, remainder);
 
     return BigIntResult: BigIntMov(_: oper1, remainder);
 }
@@ -2030,7 +2030,7 @@ stock BigIntResult: operator%(oper1, BigIntResult: oper2) {
 
     new quotient, remainder;
 
-    BigIntDiv(BigIntFromInt(oper1), _: oper2, quotient, remainder);
+    BigIntDiv(BigInt(oper1), _: oper2, quotient, remainder);
 
     return BigIntResult: BigIntMov(_: oper2, remainder);
 }
@@ -2066,13 +2066,13 @@ stock bool: operator==(BigInt: oper1, BigInt: oper2) {
 stock bool: operator==(BigIntResult: oper1, oper2) {
     debug("bool: operator==(BigIntResult: %d, %d)", _: oper1, _: oper2);
 
-    return !BigIntCmpRR(oper1, BigIntResult: BigIntFromInt(oper2));
+    return !BigIntCmpRR(oper1, BigIntResult: BigInt(oper2));
 }
 
 stock bool: operator==(BigInt: oper1, oper2) {
     debug("bool: operator==(BigInt: %d, %d)", _: oper1, _: oper2);
 
-    BigIntCmpR(_: oper1, BigIntResult: BigIntFromInt(oper2));
+    BigIntCmpR(_: oper1, BigIntResult: BigInt(oper2));
     // avoid destructor of BigInt
     #emit not
     #emit retn
@@ -2113,13 +2113,13 @@ stock bool: operator!=(BigInt: oper1, BigInt: oper2) {
 stock bool: operator!=(BigIntResult: oper1, oper2) {
     debug("bool: operator!=(BigIntResult: %d, %d)", _: oper1, _: oper2);
 
-    return !!BigIntCmpRR(oper1, BigIntResult: BigIntFromInt(oper2));
+    return !!BigIntCmpRR(oper1, BigIntResult: BigInt(oper2));
 }
 
 stock bool: operator!=(BigInt: oper1, oper2) {
     debug("bool: operator!=(BigInt: %d, %d)", _: oper1, _: oper2);
 
-    BigIntCmpR(_: oper1, BigIntResult: BigIntFromInt(oper2));
+    BigIntCmpR(_: oper1, BigIntResult: BigInt(oper2));
     // avoid destructor of BigInt
     #emit not
     #emit not
@@ -2170,19 +2170,19 @@ stock bool: operator<(BigInt: oper1, BigInt: oper2) {
 stock bool: operator<(BigIntResult: oper1, oper2) {
     debug("bool: operator<(BigIntResult: %d, %d)", _: oper1, _: oper2);
 
-    return BigIntCmpRR(oper1, BigIntResult: BigIntFromInt(oper2)) == -1;
+    return BigIntCmpRR(oper1, BigIntResult: BigInt(oper2)) == -1;
 }
 
 stock bool: operator<(oper1, BigIntResult: oper2) {
     debug("bool: operator<(%d, BigIntResult: %d)", _: oper1, _: oper2);
 
-    return BigIntCmpRR(BigIntResult: BigIntFromInt(oper1), oper2) == -1;
+    return BigIntCmpRR(BigIntResult: BigInt(oper1), oper2) == -1;
 }
 
 stock bool: operator<(BigInt: oper1, oper2) {
     debug("bool: operator<(BigInt: %d, %d)", _: oper1, _: oper2);
 
-    BigIntCmpR(_: oper1, BigIntResult: BigIntFromInt(oper2));
+    BigIntCmpR(_: oper1, BigIntResult: BigInt(oper2));
     // avoid destructor of BigInt
     #emit eq.c.pri -1
     #emit retn
@@ -2193,7 +2193,7 @@ stock bool: operator<(BigInt: oper1, oper2) {
 stock bool: operator<(oper1, BigInt: oper2) {
     debug("bool: operator<(%d, BigInt: %d)", _: oper1, _: oper2);
 
-    BigIntCmpR(_: oper2, BigIntResult: BigIntFromInt(oper1));
+    BigIntCmpR(_: oper2, BigIntResult: BigInt(oper1));
     // avoid destructor of BigInt
     #emit eq.c.pri 1 // operators swapped
     #emit retn
@@ -2243,19 +2243,19 @@ stock bool: operator>(BigInt: oper1, BigInt: oper2) {
 stock bool: operator>(BigIntResult: oper1, oper2) {
     debug("bool: operator>(BigIntResult: %d, %d)", _: oper1, _: oper2);
 
-    return BigIntCmpRR(oper1, BigIntResult: BigIntFromInt(oper2)) == 1;
+    return BigIntCmpRR(oper1, BigIntResult: BigInt(oper2)) == 1;
 }
 
 stock bool: operator>(oper1, BigIntResult: oper2) {
     debug("bool: operator>(%d, BigIntResult: %d)", _: oper1, _: oper2);
 
-    return BigIntCmpRR(BigIntResult: BigIntFromInt(oper1), oper2) == 1;
+    return BigIntCmpRR(BigIntResult: BigInt(oper1), oper2) == 1;
 }
 
 stock bool: operator>(BigInt: oper1, oper2) {
     debug("bool: operator>(BigInt: %d, %d)", _: oper1, _: oper2);
 
-    BigIntCmpR(_: oper1, BigIntResult: BigIntFromInt(oper2));
+    BigIntCmpR(_: oper1, BigIntResult: BigInt(oper2));
     // avoid destructor of BigInt
     #emit eq.c.pri 1
     #emit retn
@@ -2266,7 +2266,7 @@ stock bool: operator>(BigInt: oper1, oper2) {
 stock bool: operator>(oper1, BigInt: oper2) {
     debug("bool: operator>(%d, BigInt: %d)", _: oper1, _: oper2);
 
-    BigIntCmpR(_: oper2, BigIntResult: BigIntFromInt(oper1));
+    BigIntCmpR(_: oper2, BigIntResult: BigInt(oper1));
     // avoid destructor of BigInt
     #emit eq.c.pri -1
     #emit retn
@@ -2319,19 +2319,19 @@ stock bool: operator<=(BigInt: oper1, BigInt: oper2) {
 stock bool: operator<=(BigIntResult: oper1, oper2) {
     debug("bool: operator<=(BigIntResult: %d, %d)", _: oper1, _: oper2);
 
-    return BigIntCmpRR(oper1, BigIntResult: BigIntFromInt(oper2)) != 1;
+    return BigIntCmpRR(oper1, BigIntResult: BigInt(oper2)) != 1;
 }
 
 stock bool: operator<=(oper1, BigIntResult: oper2) {
     debug("bool: operator<=(%d, BigIntResult: %d)", _: oper1, _: oper2);
 
-    return BigIntCmpRR(BigIntResult: BigIntFromInt(oper1), oper2) != 1;
+    return BigIntCmpRR(BigIntResult: BigInt(oper1), oper2) != 1;
 }
 
 stock bool: operator<=(BigInt: oper1, oper2) {
     debug("bool: operator<=(BigInt: %d, %d)", _: oper1, _: oper2);
 
-    BigIntCmpR(_: oper1, BigIntResult: BigIntFromInt(oper2));
+    BigIntCmpR(_: oper1, BigIntResult: BigInt(oper2));
     // avoid destructor of BigInt
     #emit eq.c.pri 1
     #emit not
@@ -2343,7 +2343,7 @@ stock bool: operator<=(BigInt: oper1, oper2) {
 stock bool: operator<=(oper1, BigInt: oper2) {
     debug("bool: operator<=(%d, BigInt: %d)", _: oper1, _: oper2);
 
-    BigIntCmpR(_: oper2, BigIntResult: BigIntFromInt(oper1));
+    BigIntCmpR(_: oper2, BigIntResult: BigInt(oper1));
     // avoid destructor of BigInt
     #emit eq.c.pri -1 // operators swapped
     #emit not
@@ -2397,19 +2397,19 @@ stock bool: operator>=(BigInt: oper1, BigInt: oper2) {
 stock bool: operator>=(BigIntResult: oper1, oper2) {
     debug("bool: operator>=(BigIntResult: %d, %d)", _: oper1, _: oper2);
 
-    return BigIntCmpRR(oper1, BigIntResult: BigIntFromInt(oper2)) != -1;
+    return BigIntCmpRR(oper1, BigIntResult: BigInt(oper2)) != -1;
 }
 
 stock bool: operator>=(oper1, BigIntResult: oper2) {
     debug("bool: operator>=(%d, BigIntResult: %d)", _: oper1, _: oper2);
 
-    return BigIntCmpRR(BigIntResult: BigIntFromInt(oper1), oper2) != -1;
+    return BigIntCmpRR(BigIntResult: BigInt(oper1), oper2) != -1;
 }
 
 stock bool: operator>=(BigInt: oper1, oper2) {
     debug("bool: operator>=(BigInt: %d, %d)", _: oper1, _: oper2);
 
-    BigIntCmpR(_: oper1, BigIntResult: BigIntFromInt(oper2));
+    BigIntCmpR(_: oper1, BigIntResult: BigInt(oper2));
     // avoid destructor of BigInt
     #emit eq.c.pri -1
     #emit not
@@ -2421,7 +2421,7 @@ stock bool: operator>=(BigInt: oper1, oper2) {
 stock bool: operator>=(oper1, BigInt: oper2) {
     debug("bool: operator>=(%d, BigInt: %d)", _: oper1, _: oper2);
 
-    BigIntCmpR(_: oper2, BigIntResult: BigIntFromInt(oper1));
+    BigIntCmpR(_: oper2, BigIntResult: BigInt(oper1));
     // avoid destructor of BigInt
     #emit eq.c.pri 1
     #emit not
