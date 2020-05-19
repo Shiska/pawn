@@ -689,8 +689,158 @@ stock BigIntSubInternal(oper1, oper2, bool: trim = true) {
     }
     return 0;
 }
+// https://lemire.me/blog/2017/09/18/computing-the-inverse-of-odd-integers/
+stock BigIntInvInternal(oper) { // module inverse - only works on odd numbers because the number needs to be coprime to the modulo
+    debug("BigIntInvInternal(%d)", oper); // unused
 
-stock BigIntSquare(oper) { // fast squaring by reusing duplicates terms
+    if(oper) {
+        new size = BigIntGetSize(oper);
+        new bits = size << 4;
+        new cbits = 3;
+
+        new y = BigIntCopy(oper);
+        new square = BigIntAlloc(size);
+
+        new yaddr = y + 2;
+        new xaddr = oper + 2;
+        new saddr = square + 2;
+
+        new laddr, raddr, daddr;
+        new sum, carry, mod;
+        new left, right;
+        new i, j;
+
+        BigIntPrint(oper);
+
+        while(cbits < bits) {
+            // y * y
+            laddr = raddr = yaddr;
+            daddr = saddr;
+
+            for(sum = i = 0; i != size; ++i) {
+                right = raddr;
+                left = laddr;
+                carry = 0;
+
+                while(left < right) {
+                    #emit load.s.pri left
+                    #emit lodb.i 2
+                    #emit move.alt
+                    #emit load.s.pri right
+                    #emit lodb.i 2
+                    #emit umul
+                    #emit addr.alt mod
+                    #emit strb.i 2
+                    #emit shr.c.pri 16
+                    #emit load.s.alt carry
+                    #emit add
+                    #emit stor.s.pri carry
+
+                    sum += mod << 1;
+
+                    #emit dec.s right
+                    #emit dec.s right
+                    #emit inc.s left
+                    #emit inc.s left
+                }
+                carry <<= 1;
+
+                if(left == right) {
+                    #emit load.s.pri left
+                    #emit lodb.i 2
+                    #emit move.alt
+                    #emit umul
+                    #emit addr.alt mod
+                    #emit strb.i 2
+                    #emit shr.c.pri 16
+                    #emit load.s.alt carry
+                    #emit add
+                    #emit stor.s.pri carry
+
+                    sum += mod;
+                } {}
+                #emit load.s.pri sum
+                #emit load.s.alt daddr
+                #emit strb.i 2
+                #emit shr.c.pri 16
+                #emit load.s.alt carry
+                #emit add
+                #emit stor.s.pri sum
+
+                daddr += 2;
+                raddr += 2;
+            }
+            BigIntPrint(square);
+            // (y << 1) - (y * y * x)
+            laddr = saddr;
+            raddr = xaddr;
+            daddr = yaddr;
+            
+            for(sum = i = 0; i++ != size; ) {
+                right = raddr;
+                left = laddr;
+                carry = 0;
+                j = i;
+                // sum + carry = y * y * x
+                while(j--) {
+                    #emit load.s.pri left
+                    #emit lodb.i 2
+                    #emit move.alt
+                    #emit load.s.pri right
+                    #emit lodb.i 2
+                    #emit umul
+                    #emit addr.alt mod
+                    #emit strb.i 2
+                    #emit shr.c.pri 16
+                    #emit load.s.alt carry
+                    #emit add
+                    #emit stor.s.pri carry
+
+                    sum += mod;
+
+                    #emit dec.s right
+                    #emit dec.s right
+                    #emit inc.s left
+                    #emit inc.s left
+                }
+                // (y << 1) - sum
+                #emit load.s.pri daddr
+                #emit lodb.i 2
+                #emit shl.c.pri 1
+                #emit load.s.alt sum
+                #emit sub
+                #emit load.s.alt daddr
+                #emit strb.i 2
+                #emit shr.c.pri 31
+                #emit load.s.alt carry
+                #emit sub.alt
+                #emit stor.s.pri sum
+
+                daddr += 2;
+                raddr += 2;
+            }
+            BigIntPrint(y);
+ 
+            cbits <<= 1;
+        }
+        BigIntFree(square);
+
+        return y;
+    }
+    return 0;
+
+    // new y = (3 * x) ^ 2;
+
+    // y = f32(x, y);
+    // y = f32(x, y);
+    // y = f32(x, y);
+
+    // return y;
+}
+
+// squaring by reusing duplicates terms
+// it seems to be slower than BigIntMul if the number is smaller than ~128 bits
+stock BigIntSquare(oper) {
     debug("BigIntSquare(%d)", oper);
 
     if(oper) {
@@ -714,13 +864,13 @@ stock BigIntSquare(oper) { // fast squaring by reusing duplicates terms
         new daddr = result + 2; // dest addr
         new laddr = oper + 2; // left addr
         new raddr = laddr; // right addr
-        new carry, sum, left, right, div, mod;
+        new carry, sum, left, right, mod;
 
         while(--size) {
             right = raddr;
             left = laddr;
-            sum = carry;
             carry = 0;
+            sum = 0;
 
             while(left < right) {
                 #emit load.s.pri left
@@ -729,32 +879,42 @@ stock BigIntSquare(oper) { // fast squaring by reusing duplicates terms
                 #emit load.s.pri right
                 #emit lodb.i 2
                 #emit umul
-                #emit const.alt 0x10000
-                #emit udiv // the first bit could be lost if shifted before udiv
-                #emit shl.c.pri 1
-                #emit stor.s.pri div
-                #emit shl.c.alt 1
-                #emit stor.s.alt mod
+                #emit addr.alt mod
+                #emit strb.i 2
+                #emit shr.c.pri 16
+                #emit load.s.alt carry
+                #emit add
+                #emit stor.s.pri carry
 
-                carry += div;
                 sum += mod;
-                right -= 2;
-                left += 2;
+
+                #emit dec.s right
+                #emit dec.s right
+                #emit inc.s left
+                #emit inc.s left
             }
+            // dublicate the terms
+            carry <<= 1;
+            sum <<= 1;
+
             if(left == right) {
                 #emit load.s.pri left
                 #emit lodb.i 2
                 #emit move.alt
                 #emit umul
-                #emit const.alt 0x10000
-                #emit udiv
-                #emit stor.s.pri div
-                #emit stor.s.alt mod
+                #emit addr.alt mod
+                #emit strb.i 2
+                #emit shr.c.pri 16
+                #emit load.s.alt carry
+                #emit add
+                #emit stor.s.pri carry
 
-                carry += div;
                 sum += mod;
             } {}
-            #emit load.s.pri sum
+            #emit load.s.pri daddr
+            #emit lodb.i 2
+            #emit load.s.alt sum
+            #emit add
             #emit load.s.alt daddr
             #emit strb.i 2
             #emit shr.c.pri 16
@@ -762,19 +922,31 @@ stock BigIntSquare(oper) { // fast squaring by reusing duplicates terms
             #emit add
             #emit stor.s.pri carry
 
+            daddr += 2;
+
+            if(carry) {
+                #emit load.s.pri daddr
+                #emit lodb.i 2
+                #emit load.s.alt carry
+                #emit add
+                #emit load.s.alt daddr
+                #emit strb.i 2
+                #emit shr.c.pri 16
+                #emit stor.s.pri carry
+
+                if(carry) { // if there is still a carry add it to the next higher cell
+                    #emit load.s.pri daddr
+                    #emit add.c 2
+                    #emit move.alt
+                    #emit load.s.pri carry
+                    #emit strb.i 2
+                }
+            }
             if(raddr == maddr) {
                 laddr += 2;
             } else {
                 raddr += 2;
             }
-            daddr += 2;
-        }
-        if(carry) {
-            #emit load.s.pri carry
-            #emit load.s.alt daddr
-            #emit strb.i 2
-            #emit shr.c.pri 16
-            #emit stor.s.pri carry
         }
         BigIntPrint(result);
         BigIntTrim(result);
@@ -866,8 +1038,6 @@ stock BigIntMul(oper1, oper2) {
                 #emit strb.i 2
                 #emit shr.c.pri 16
                 #emit stor.s.pri carry
-
-                BigIntPrint(result);
             } {}
             #emit load.s.pri raddr
             #emit add.c 2
@@ -877,8 +1047,6 @@ stock BigIntMul(oper1, oper2) {
             #emit add
             #emit load.s.alt raddr
             #emit strb.i 2
-
-            BigIntPrint(result);
         }
         BigIntPrint(result);
         BigIntTrim(result);
@@ -1252,7 +1420,13 @@ stock BigIntCmp(oper1, oper2) { // -1, 0, 1 - oper1 is less than, equal or great
             return clamp(size1 - size2, -1, 1); // checking for -1 and 1 produces less opcode than checking for positive / negative
         }
         // compare bytes if size match
-        return raw_memcmp(oper1, oper2, (size1 + 1) << 1); // -1, 0, 1
+        if(isneg1) { // if both negative switch operators
+            #emit load.s.pri oper1
+            #emit load.s.alt oper2
+            #emit stor.s.pri oper2
+            #emit stor.s.alt oper1
+        }
+        return raw_memcmp(oper1, oper2, (size1 + 1) << 1) ; // -1, 0, 1
     }
     return 0;
 }

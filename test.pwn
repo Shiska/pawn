@@ -104,6 +104,52 @@ Test:Operator() { // calls all operators at least once
     // operator~(BigInt: oper[], size)
 }
 
+Test:Comparision() {
+    new cBigInt: int1 = 5;
+    new cBigInt: int2 = -int1;
+
+    ASSERT(int1 == -int2);
+    ASSERT(-int1 == int2);
+
+    ASSERT(int1 != int2);
+    ASSERT(-int1 != -int2);
+
+    ASSERT(int2 < int1);
+    ASSERT(-int2 > -int1);
+
+    ASSERT(int1 > int2);
+    ASSERT(-int1 < -int2);
+
+    ASSERT(int2 <= int1);
+    ASSERT(-int2 >= -int1);
+
+    ASSERT(int2 <= -int1);
+    ASSERT(-int2 >= int1);
+
+    ASSERT(int1 >= int2);
+    ASSERT(-int1 <= -int2);
+
+    ASSERT(int1 >= -int2);
+    ASSERT(-int1 <= int2);
+
+    new cBigInt: int3 = 3;
+
+    ASSERT(int1 != int3);
+    ASSERT(-int1 != -int3);
+
+    ASSERT(int2 != int3);
+    ASSERT(-int2 != -int3);
+
+    ASSERT(int2 < int3);
+    ASSERT(-int2 > -int3);
+
+    ASSERT(int1 > int3);
+    ASSERT(-int1 < -int3);
+
+    ASSERT(int2 <= int1);
+    ASSERT(-int2 >= -int1);
+}
+
 Test:AddSub() {
     new cBigInt: int1 = -2147483647;
     new cBigInt: int2 = -(int1 + int1 + int1 + int1); // 8589934588‬
@@ -172,7 +218,7 @@ Test:Mul() {
 
     BigIntGetHex(int5, hex);
 
-    ASSERT(strcmp(hex, "3FFFFFFF000000010") == 0);
+    ASSERT(!strcmp(hex, "3FFFFFFF000000010"));
 }
 
 Test:Shift() {
@@ -188,9 +234,9 @@ Test:Karatsuba() {
     new cBigInt: int2 = int1 * int1;
     new cBigInt: int3 = int2 * int2;
     new cBigInt: int4 = int3 * int3;
-    new cBigInt: int5 = int5 * int5; // 2147483646^16 - 0xFFFFFFC00000077FFFFF740000071BFFFFBBC00001F47FFFF4D400003245FFFF4D400001F47FFFFBBC0000071BFFFFF7400000077FFFFFFC000000010000
+    new cBigInt: int5 = int4 * int4;
 
-    new cBigInt: f1 = -int5;
+    new cBigInt: f1 = -int1;
     new cBigInt: f2 = f1;
 
     new cBigInt: int7 = f1 * f1;
@@ -200,15 +246,11 @@ Test:Karatsuba() {
     ASSERT(int7 == int8);
     ASSERT(int8 == int9);
 
-    // BigIntSquare                         100000 times /      17491 ms =        5.71 times/ms
-    // BigIntMul                            100000 times /      19989 ms =        5.00 times/ms
-    // BigIntKaratsuba                       10000 times /      40615 ms =        0.24 times/ms
-    // BigIntSquare                         100000 times /      17889 ms =        5.59 times/ms
-    // BigIntMul                            100000 times /      21731 ms =        4.60 times/ms
-    // BigIntKaratsuba                       10000 times /      50038 ms =        0.19 times/ms
-    // BigIntSquare                         100000 times /      18557 ms =        5.38 times/ms
-    // BigIntMul                            100000 times /      23788 ms =        4.20 times/ms
-    // BigIntKaratsuba                       10000 times /      40724 ms =        0.24 times/ms
+    new hex[256];
+
+    BigIntGetHex(int5, hex);
+
+    ASSERT(!strcmp(hex, "FFFFFFC00000077FFFFF740000071BFFFFBBC00001F47FFFF4D400003245FFFF4D400001F47FFFFBBC0000071BFFFFF7400000077FFFFFFC000000010000")); // 2147483646^16
 
     // for(new i; i < 3; ++i) {
     //     SPEEDTEST("BigIntSquare", 100000) {
@@ -230,27 +272,4 @@ Test:Pow() {
     new cBigInt: int4 = BigIntResult: BigIntPow(_: int1, 4);
 
     ASSERT(int3 == int4);
-}
-
-Test:Inv() {
-    new val32 = 55;
-    new inverse32 = findInverse32(val32);
-
-    ASSERT(inverse32 * val32 == 1);
-
-    printf("The 32-bit inverse of %d is %d (%x) \n", val32, inverse32, inverse32);
-}
-// https://lemire.me/blog/2017/09/18/computing-the-inverse-of-odd-integers/
-stock f32(x, y) {
-    return y * (2 - y * x);
-}
-
-stock findInverse32(x) {
-    new y = (3 * x) ^ 2;
-
-    y = f32(x, y);
-    y = f32(x, y);
-    y = f32(x, y);
-
-    return y;
 }
