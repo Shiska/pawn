@@ -917,14 +917,6 @@ stock BigIntInvInternal(oper) { // module inverse - only works on odd numbers be
         return y;
     }
     return 0;
-
-    // new y = (3 * x) ^ 2;
-
-    // y = f32(x, y);
-    // y = f32(x, y);
-    // y = f32(x, y);
-
-    // return y;
 }
 
 // squaring by reusing duplicates terms
@@ -1515,41 +1507,6 @@ stock BigIntShiftRight(oper, rshift) { // inplace
     return 0;
 }
 
-stock BigIntToHex(address, dest[], const size = sizeof dest) {
-    debug("BigIntToHex(%d, %d)", address, size);
-
-    if(address && size > 0) {
-        new idx, addr = address + ((BigIntGetSize(address) + 1) << 1), j, h, hex;
-
-        address += 2;
-
-        while(addr != address) {
-            #emit load.s.pri addr
-            #emit add.c -2
-            #emit stor.s.pri addr
-            #emit lodb.i 2
-            #emit stor.s.pri hex
-
-            for(j = 0; j != 4 && idx < size; ++j) {
-                h = (hex >>> 12) & 0xF;
-                hex <<= 4;
-
-                if(!idx && !h) { // skip leading zeros
-                    continue;
-                }
-                dest[idx++] = (h < 10) ? (h + '0') : (h + ('A' - 10));
-            }
-        }
-        if(idx == size) {
-            idx--;
-        }
-        dest[idx] = EOS;
-
-        return idx;
-    }
-    return 0;
-}
-
 stock BigIntCmp(oper1, oper2) { // -1, 0, 1 - oper1 is less than, equal or greater than
     debug("BigIntCmp(%d, %d)", oper1, oper2);
 
@@ -1932,7 +1889,6 @@ stock BigIntResult: operator/(oper1, BigIntResult: oper2) {
 
     return BigIntResult: BigIntMov(_: oper2, quotient);
 }
-
 
 stock BigIntResult: operator%(BigIntResult: oper1, BigIntResult: oper2) {
     debug("BigIntResult: operator%%(BigIntResult: %d BigIntResult: %d)", _: oper1, _: oper2);
@@ -2449,8 +2405,8 @@ stock bool: operator!(BigInt: oper) {
 }
 
 // pass BigInt object as reference otherwise it would call the copy constructor
-stock BigIntGetValues(const & BigInt: address, dest[], const size = sizeof dest) {
-    debug("BigIntGetValues(%d, %d)", _: address, size);
+stock BigIntToBinary(const & BigInt: address, dest[], const size = sizeof dest) {
+    debug("BigIntToBinary(%d, %d)", _: address, size);
 
     if(_: address) {
         new destaddr;
@@ -2465,19 +2421,54 @@ stock BigIntGetValues(const & BigInt: address, dest[], const size = sizeof dest)
 
             BigIntPrint(_: int);
 
-            raw_memset(destaddr, size * 4, -1); // fill dest array with 1s
+            raw_memset(destaddr, size << 2, -1); // fill dest array with 1s
 
             return raw_memcpy(destaddr, _: int + 2, 0, BigIntGetSize(_: int) << 1, size);
         }
-        raw_memset(destaddr, size * 4, 0); // clear dest array
+        raw_memset(destaddr, size << 2, 0); // clear dest array
 
         return raw_memcpy(destaddr, _: address + 2, 0, BigIntGetSize(_: address) << 1, size);
     }
     return 0;
 }
 
-stock BigIntGetHex(const & BigInt: address, dest[], const size = sizeof dest) {
-    debug("BigIntGetHex(%d, %d)", _: address, size);
+stock BigIntToHexInternal(address, dest[], const size = sizeof dest) {
+    debug("BigIntToHexInternal(%d, %d)", address, size);
+
+    if(address && size > 0) {
+        new idx, addr = address + ((BigIntGetSize(address) + 1) << 1), j, h, hex;
+
+        address += 2;
+
+        while(addr != address) {
+            #emit load.s.pri addr
+            #emit add.c -2
+            #emit stor.s.pri addr
+            #emit lodb.i 2
+            #emit stor.s.pri hex
+
+            for(j = 0; j != 4 && idx < size; ++j) {
+                h = (hex >>> 12) & 0xF;
+                hex <<= 4;
+
+                if(!idx && !h) { // skip leading zeros
+                    continue;
+                }
+                dest[idx++] = (h < 10) ? (h + '0') : (h + ('A' - 10));
+            }
+        }
+        if(idx == size) {
+            idx--;
+        }
+        dest[idx] = EOS;
+
+        return idx;
+    }
+    return 0;
+}
+
+stock BigIntToHex(const & BigInt: address, dest[], const size = sizeof dest) {
+    debug("BigIntToHex(%d, %d)", _: address, size);
 
     if(_: address) {
         BigIntPrint(_: address);
@@ -2487,9 +2478,9 @@ stock BigIntGetHex(const & BigInt: address, dest[], const size = sizeof dest) {
 
             BigIntPrint(_: int);
 
-            return BigIntToHex(_: int, dest, size);
+            return BigIntToHexInternal(_: int, dest, size);
         }
-        return BigIntToHex(_: address, dest, size);
+        return BigIntToHexInternal(_: address, dest, size);
     }
     return 0;
 }

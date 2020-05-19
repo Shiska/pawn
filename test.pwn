@@ -177,13 +177,13 @@ Test:AddSub() {
 
     new data[8];
 
-    BigIntGetValues(int2, data);
+    BigIntToBinary(int2, data);
 
     ASSERT(data[0] == -4);
     ASSERT(data[1] == 1);
     ASSERT(data[2] == 0);
 
-    BigIntGetValues(int3, data);
+    BigIntToBinary(int3, data);
 
     ASSERT(data[0] == 4);
     ASSERT(data[1] == -2);
@@ -193,7 +193,7 @@ Test:AddSub() {
 
     new cBigInt: int4 = int3 - int1 - int1 - int1 - int1 - int1; // 2147483647
 
-    BigIntGetValues(int4, data);
+    BigIntToBinary(int4, data);
 
     ASSERT(data[0] == 2147483647);
 }
@@ -204,7 +204,7 @@ Test:Mul() {
 
     new data[8];
 
-    BigIntGetValues(int2, data);
+    BigIntToBinary(int2, data);
 
     ASSERT(data[0] == 4);
     ASSERT(data[1] == -2);
@@ -212,7 +212,7 @@ Test:Mul() {
 
     new cBigInt: int3 = int1 * -4; // 8589934588‬
 
-    BigIntGetValues(int3, data);
+    BigIntToBinary(int3, data);
 
     ASSERT(data[0] == -4);
     ASSERT(data[1] == 1);
@@ -220,7 +220,7 @@ Test:Mul() {
 
     new cBigInt: int4 = int1 * int1;
 
-    BigIntGetValues(int4, data);
+    BigIntToBinary(int4, data);
 
     ASSERT(data[0] == 1);
     ASSERT(data[1] == 1073741823);
@@ -228,7 +228,7 @@ Test:Mul() {
 
     new cBigInt: int5 = int2 * int2; // 73786976226118729744
 
-    BigIntGetValues(int5, data);
+    BigIntToBinary(int5, data);
 
     ASSERT(data[0] == 0x00000010); // 0x00000010
     ASSERT(data[1] == 0xfffffff0); // 0xfffffff0
@@ -236,7 +236,7 @@ Test:Mul() {
 
     new hex[32];
 
-    BigIntGetHex(int5, hex);
+    BigIntToHex(int5, hex);
 
     ASSERT(!strcmp(hex, "3FFFFFFF000000010"));
 }
@@ -268,7 +268,7 @@ Test:Karatsuba() {
 
     new hex[256];
 
-    BigIntGetHex(int5, hex);
+    BigIntToHex(int5, hex);
 
     ASSERT(!strcmp(hex, "FFFFFFC00000077FFFFF740000071BFFFFBBC00001F47FFFF4D400003245FFFF4D400001F47FFFFBBC0000071BFFFFF7400000077FFFFFFC000000010000")); // 2147483646^16
 
