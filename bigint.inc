@@ -22,7 +22,7 @@ stock raw_memcpy(dest, const source, index, numbytes, maxlength) {
     return 0;
 }
 
-stock raw_memset(address, numbytes, value) { 
+stock raw_memset(address, numbytes, value) {
     debug("raw_memset(%d, %d, %d)", address, numbytes, value);
     // the "fill" opcode only fills to the next smaller multiple of the cell size, fill the remaining bytes manually with strb.i
     switch(numbytes & 3) {
@@ -864,7 +864,7 @@ stock BigIntInvInternal(oper) { // module inverse - only works on odd numbers be
             laddr = saddr;
             raddr = xaddr;
             daddr = yaddr;
-            
+
             for(sum = i = 0; i++ != size; ) {
                 right = raddr;
                 left = laddr;
@@ -909,7 +909,7 @@ stock BigIntInvInternal(oper) { // module inverse - only works on odd numbers be
                 raddr += 2;
             }
             BigIntPrint(y);
- 
+
             cbits <<= 1;
         }
         BigIntFree(square);
@@ -2481,6 +2481,74 @@ stock BigIntToHex(const & BigInt: address, dest[], const size = sizeof dest) {
             return BigIntToHexInternal(_: int, dest, size);
         }
         return BigIntToHexInternal(_: address, dest, size);
+    }
+    return 0;
+}
+
+stock BigIntToDecimal(const & BigInt: address, dest[], size = sizeof dest) {
+    debug("BigIntToDecimal(%d, %d)", _: address, size);
+
+    if(_: address) {
+        BigIntPrint(_: address);
+
+        new addr, b, d;
+        new isize = BigIntGetSize(_: address);
+        new value, div, mod;
+
+        #emit load.s.pri dest
+        #emit stor.s.pri addr
+        // clear dest array
+        raw_memset(addr, size << 2, 0);
+
+        addr = _: address + ((isize + 1) << 1);
+
+        size--; // last cell
+
+        while(isize) {
+            #emit load.s.pri addr
+            #emit add.c -2
+            #emit stor.s.pri addr
+            #emit lodb.i 2
+            #emit stor.s.pri value
+
+            for(b = 0; b < 16; ++b) {
+                // shift / multiply dest by 2
+                for(d = size; d >= 0; --d) {
+                    mod = (dest[d] << 1) + div;
+
+                    if(mod >= 10) {
+                        #emit load.s.pri mod
+                        #emit const.alt 10
+                        #emit sdiv
+                        #emit stor.s.pri div
+                        #emit stor.s.alt mod
+                    } else {
+                        div = 0;
+                    }
+                    dest[d] = mod;
+                }
+                // add bit
+                dest[size] += _: !!(value & (1 << 15));
+
+                value <<= 1;
+            }
+            isize--;
+        }
+        // find highest decimal
+        for(b = d = 0; d <= size && !dest[d]; ++d) {}
+        // move string to correct position and convert it to characters
+        if(d) {
+            if(BigIntIsNeg(_: address)) {
+                dest[b++] = '-';
+            }
+            while(d <= size) {
+                dest[b++] = dest[d++] + '0';
+            }
+            dest[b] = EOS;
+        } else if(!BigIntIsNeg(_: address)) { // if array is full and number is positive
+            b = size; // the number is valud, if negative we are missing the minus sign, so leave b as 0
+        }
+        return b; // returns 0 for failure or number of characters
     }
     return 0;
 }

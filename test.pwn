@@ -7,7 +7,7 @@
 #include "bigint"
 
 #define SPEEDTEST(%0,%1)\
-	for(new _wait = -tickcount(), _count = 1; _count; )\
+    for(new _wait = -tickcount(), _count = 1; _count; )\
         for(; ; ++_count)\
             if(%1 < _count) {\
                 _wait += tickcount();\
@@ -202,7 +202,7 @@ Test:Mul() {
     new cBigInt: int1 = -2147483647;
     new cBigInt: int2 = int1 * 4; // -8589934588‬
 
-    new data[8];
+    new data[32];
 
     BigIntToBinary(int2, data);
 
@@ -234,11 +234,13 @@ Test:Mul() {
     ASSERT(data[1] == 0xfffffff0); // 0xfffffff0
     ASSERT(data[2] == 0x3); // 0x3
 
-    new hex[32];
+    BigIntToHex(int5, data);
 
-    BigIntToHex(int5, hex);
+    ASSERT(!strcmp(data, "3FFFFFFF000000010"));
 
-    ASSERT(!strcmp(hex, "3FFFFFFF000000010"));
+    BigIntToDecimal(int5, data);
+
+    ASSERT(!strcmp(data, "73786976226118729744"));
 }
 
 Test:Shift() {
