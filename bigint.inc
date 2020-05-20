@@ -2523,9 +2523,7 @@ stock BigIntToDecimal(const & BigInt: address, dest[], size = sizeof dest) {
     if(_: address) {
         BigIntPrint(_: address);
 
-        new addr, b, d;
-        new isize = BigIntGetSize(_: address);
-        new value, div, mod;
+        new addr, isize = BigIntGetSize(_: address);
 
         #emit load.s.pri dest
         #emit stor.s.pri addr
@@ -2534,53 +2532,54 @@ stock BigIntToDecimal(const & BigInt: address, dest[], size = sizeof dest) {
 
         addr = _: address + ((isize + 1) << 1);
 
-        size--; // last cell
+        new carry, d, msd = --size; // last cell
 
         while(isize) {
             #emit load.s.pri addr
             #emit add.c -2
             #emit stor.s.pri addr
             #emit lodb.i 2
-            #emit stor.s.pri value
-
-            for(b = 0; b < 16; ++b) {
-                // shift / multiply dest by 2
-                for(d = size; d >= 0; --d) {
-                    mod = (dest[d] << 1) + div;
-
-                    if(mod >= 10) {
-                        #emit load.s.pri mod
-                        #emit const.alt 10
-                        #emit sdiv
-                        #emit stor.s.pri div
-                        #emit stor.s.alt mod
-                    } else {
-                        div = 0;
-                    }
-                    dest[d] = mod;
-                }
-                // add bit
-                dest[size] += _: !!(value & (1 << 15));
-
-                value <<= 1;
+            #emit stor.s.pri carry
+            // shift every cell by 16 and split it into each digit until highst digit (msd) reached and carry is 0
+            for(d = size; (d >= msd) || (carry && d >= 0); --d) {
+                // dest[d] = (dest[d] << 16) + carry, carry = dest[d] / 10, dest[d] %= 10;
+                // emit just to speed things / only one div opcode
+                #emit load.s.alt dest
+                #emit load.s.pri d
+                #emit idxaddr
+                #emit push.pri
+                #emit load.i
+                #emit shl.c.pri 16
+                #emit load.s.alt carry
+                #emit add
+                #emit const.alt 10
+                #emit sdiv
+                #emit stor.s.pri carry
+                #emit move.pri
+                #emit pop.alt
+                #emit stor.i
             }
+            msd = d + 1;
             isize--;
         }
-        // find highest decimal
-        for(b = d = 0; d <= size && !dest[d]; ++d) {}
-        // move string to correct position and convert it to characters
-        if(d) {
+        if(msd) { // move string to correct position and convert it to characters
+            d = 0;
+
             if(BigIntIsNeg(_: address)) {
-                dest[b++] = '-';
+                if(msd == 1) { // to few cells available, we need 1 for eos and 1 for minus sign
+                    size = 0; // copy nothing
+                } else {
+                    dest[0] = '-';
+                    d++;
+                }
             }
-            while(d <= size) {
-                dest[b++] = dest[d++] + '0';
+            while(msd <= size) {
+                dest[d++] = dest[msd++] + '0';
             }
-            dest[b] = EOS;
-        } else if(!BigIntIsNeg(_: address)) { // if array is full and number is positive
-            b = size; // the number is valud, if negative we are missing the minus sign, so leave b as 0
+            dest[d] = EOS;
+
+            return d;
         }
-        return b; // returns 0 for failure or number of characters
     }
-    return 0;
+    return 0; // returns 0 for failure or number of characters
 }
