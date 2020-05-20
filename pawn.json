@@ -7,8 +7,7 @@
         "sampctl/samp-stdlib"
     ],
     "dev_dependencies": [
-        "pawn-lang/YSI-Includes@5.x",
-        "Zeex/samp-plugin-crashdetect"
+        "pawn-lang/YSI-Includes@5.x"
     ],
     "builds": [
         {

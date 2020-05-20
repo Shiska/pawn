@@ -303,3 +303,29 @@ Test:Div() {
     ASSERT((int1 / int2) == 2016);
     ASSERT((int1 % int2) == 19);
 }
+
+Test:Example() {
+    new cBigInt: int1 = 2147483647;
+    new cBigInt: int2 = int1 + int1 + int1 + int1;
+    new cBigInt: int3 = BigInt(2147483647) + 2147483647 + 2147483647 + 2147483647;
+    new cBigInt: int4 = 2147483647 + 2147483647 + BigInt(2147483647) + 2147483647;
+
+    new data[16];
+
+    BigIntToDecimal(int2, data);
+
+    ASSERT(!strcmp(data, "8589934588"));
+    ASSERT(int2 == int3);
+    ASSERT(int3 != int4);
+
+    new BigInt: int5 = 7;
+
+    // int5 = 9; // Never reassign a variable! otherwise it will result in a memory leak
+
+    ASSERT(++int5 == 8);
+    ASSERT(--int5 == 7);
+
+    new BigInt: int6;
+
+    int6 = 9; // Valid because in6 wasn't assigned to anything
+}
