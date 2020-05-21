@@ -20,6 +20,9 @@ Test:Operator() { // calls all operators at least once
     // assignment
     new cBigInt: int1 = 5; // BigInt: operator=(oper)
     new cBigInt: int2 = int1; // BigInt: operator=(BigInt: oper)
+
+    ASSERT(int1 == int2);
+    ASSERT(int2 == 5);
     // BigInt: operator=(BigIntResult: oper) will be called by any calculation
     // addition
     // BigIntResult: operator+(BigInt: oper1, oper2)                        - int + 10
@@ -27,11 +30,15 @@ Test:Operator() { // calls all operators at least once
     // BigIntResult: operator+(BigInt: oper1, BigIntResult: oper2)          - result + int
     // BigIntResult: operator+(BigIntResult: oper1, oper2)                  - result + 5
     // BigIntResult: operator+(BigIntResult: oper1, BigIntResult: oper2)    - result + result
-    new cBigInt: int3 = (int1 + 10) + (int1 + int2 + int2) + 5; // 35
+    new cBigInt: int3 = (int1 + 10) + (int1 + int2 + int2) + 5;
+
+    ASSERT(int3 == 35);
     // neg
     // BigIntResult: operator-(BigInt: oper)                                - (-int)
     // BigIntResult: operator-(BigIntResult: oper)                          - (-result)
     new cBigInt: int4 = -(-int3);
+
+    ASSERT(int4 == 35);
     // subtraction
     // BigIntResult: operator-(BigInt: oper1, oper2)                        - int - 10
     // BigIntResult: operator-(BigInt: oper1, BigInt: oper2)                - int - int
@@ -42,13 +49,17 @@ Test:Operator() { // calls all operators at least once
     // BigIntResult: operator-(BigIntResult: oper1, oper2)                  - result - 30
     // BigIntResult: operator-(oper1, BigIntResult: oper2)                  - 40 - result
     new cBigInt: int5 = (int3 - (int1 - 10)) - ((int1 - int2) - int4) - (40 - ((20 - int3) - 30));
+
+    ASSERT(int5 == -10);
     // multiplication
     // BigIntResult: operator*(BigInt: oper1, oper2)                        - int * 10
     // BigIntResult: operator*(BigInt: oper1, BigInt: oper2)                - int * int
     // BigIntResult: operator*(BigInt: oper1, BigIntResult: oper2)          - result * int
     // BigIntResult: operator*(BigIntResult: oper1, oper2)                  - result * 5
     // BigIntResult: operator*(BigIntResult: oper1, BigIntResult: oper2)    - result * result
-    new cBigInt: int6 = (int1 * 10) * (int1 * int2 * int2) * 5; // 31250
+    new cBigInt: int6 = (int1 * 10) * (int1 * int2 * int2) * 5;
+
+    ASSERT(int6 == 31250);
     // division
     // BigIntResult: operator/(BigInt: oper1, oper2)                        - int / 10
     // BigIntResult: operator/(BigInt: oper1, BigInt: oper2)                - int / int
@@ -58,7 +69,9 @@ Test:Operator() { // calls all operators at least once
     // BigIntResult: operator/(oper1, BigInt: oper2)                        - 20 / int
     // BigIntResult: operator/(BigIntResult: oper1, oper2)                  - result / 30
     // BigIntResult: operator/(oper1, BigIntResult: oper2)                  - 40 / result
-    new cBigInt: int7 = (int3 / (int1 / 10)) / ((int1 / int2) / int4) / (40 / ((20 / int3) / 30));
+    new cBigInt: int7 = ((int6 / int2) / int1) / (int3 / (int1 / 2)) / (33 / ((200 / int3) / 3));
+
+    ASSERT(int7 == 2);
     // modulo
     // BigIntResult: operator%(BigInt: oper1, oper2)                        - int % 10
     // BigIntResult: operator%(BigInt: oper1, BigInt: oper2)                - int % int
@@ -68,7 +81,9 @@ Test:Operator() { // calls all operators at least once
     // BigIntResult: operator%(oper1, BigInt: oper2)                        - 20 % int
     // BigIntResult: operator%(BigIntResult: oper1, oper2)                  - result % 30
     // BigIntResult: operator%(oper1, BigIntResult: oper2)                  - 40 % result
-    new cBigInt: int8 = (int3 % (int1 % 10)) % ((int1 % int2) % int4) % (40 % ((20 % int3) % 30));
+    new cBigInt: int8 = ((int6 % int3) % int6) % (int3 % (int3 % 9)) % (33 % ((200 % int3) % 15));
+
+    ASSERT(int8 == 0);
     // equal
     if(-int1 == -int2) {} // bool: operator==(BigIntResult: oper1, BigIntResult: oper2)
     if(int3 == -int4) {} // bool: operator==(BigInt: oper1, BigIntResult: oper2)
@@ -297,11 +312,24 @@ Test:Pow() {
 }
 
 Test:Div() {
-    new cBigInt: int1 = 66547;
-    new cBigInt: int2 = 33;
+    for(new i = 0; i < 100; ++i) {
+        new int1 = random(cellmax);
+        new int2 = random(499) + 1;
+        new int3 = int2 << 16;
 
-    ASSERT((int1 / int2) == 2016);
-    ASSERT((int1 % int2) == 19);
+        new cBigInt: bint1 = int1;
+        new cBigInt: bint2 = int2;
+        new cBigInt: bint3 = int3;
+        new cBigInt: bint4 = bint1 / bint2;
+        new cBigInt: bint5 = bint1 % bint2;
+        new cBigInt: bint6 = bint1 / bint3;
+        new cBigInt: bint7 = bint1 % bint3;
+
+        ASSERT(bint4 == (int1 / int2));
+        ASSERT(bint5 == (int1 % int2));
+        ASSERT(bint6 == (int1 / int3));
+        ASSERT(bint7 == (int1 % int3));
+    }
 }
 
 Test:Example() {

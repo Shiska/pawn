@@ -1289,111 +1289,209 @@ static stock BigIntDiv(dividend, divisor, & quotient, & remainder) {
     if(dividend && divisor) {
         new sizeD = BigIntGetSize(divisor);
 
-        if(sizeD) { // not zero
-            new sizeN = BigIntGetSize(dividend);
+        if(!sizeD) { // zero
+            return 1 / sizeD; // simulate division by zero
+        }
+        new sizeN = BigIntGetSize(dividend);
 
-            BigIntPrint(dividend);
-            BigIntPrint(divisor);
-            // TODO: special case for divisor size == 1 otherwise long division with shiffting over all 0 (msb function)
-            if((sizeN < sizeD) || ((sizeN == sizeD) && BigIntCmp(dividend, divisor) == -1)) {
-                quotient = _: BigInt(0); // allocate empty quotient
-                remainder = BigIntCopy(dividend);
-            } else {
-                new size = sizeN << 1;
-                new raddr, daddr, carry, s;
+        BigIntPrint(dividend);
+        BigIntPrint(divisor);
 
-                quotient = BigIntAlloc(sizeN);
-                remainder = BigIntAlloc(size);
-                // copy dividend without flags
-                raw_memcpy(remainder, dividend + 2, 2, size, size);
+        if((sizeN < sizeD) || ((sizeN == sizeD) && BigIntCmp(dividend, divisor) == -1)) { // dividend < divisor
+            quotient = _: BigInt(0); // quotient = 0
+            remainder = BigIntCopy(dividend); // remainder = dividend
+        } else if(sizeD == 1) { // we can use the div opcode if divisor is small enough
+            quotient = BigIntAlloc(sizeN);
 
-                new div = BigIntAlloc(size);
-                // copy divisor to shifted position
-                raw_memcpy(div, divisor + 2, size + 2, sizeD << 1, size);
+            new div = (sizeN + 1) << 1;
+            new daddr = dividend + div;
+            new qaddr = quotient + div;
+            new mod = 0;
+            // load divisor value
+            #emit load.s.pri divisor
+            #emit add.c 2
+            #emit lodb.i 2
+            #emit stor.s.pri div
+            // divide cells
+            while(sizeN) {
+                #emit load.s.pri daddr
+                #emit add.c -2
+                #emit stor.s.pri daddr
+                #emit lodb.i 2
+                #emit load.s.alt mod
+                #emit shl.c.alt 16
+                #emit or
+                #emit load.s.alt div
+                #emit udiv
+                #emit stor.s.alt mod
+                #emit move.alt
+                #emit load.s.pri qaddr
+                #emit add.c -2
+                #emit stor.s.pri qaddr
+                #emit xchg
+                #emit strb.i 2
 
-                debug("divisor");
-                BigIntPrint(div);
-                // long division
-                for(new i = sizeN << 4; i != 0; --i) {
+                sizeN--;
+            }
+            BigIntTrim(quotient);
+
+            remainder = _: BigInt(mod);
+        } else {
+            new size = sizeN << 1;
+            new raddr, daddr, carry, s;
+
+            quotient = BigIntAlloc(sizeN);
+            remainder = BigIntAlloc(size);
+            // copy dividend without flags
+            raw_memcpy(remainder, dividend + 2, 2, size, size);
+
+            new div = BigIntAlloc(size);
+            // copy divisor to shifted position
+            raw_memcpy(div, divisor + 2, size + 2, sizeD << 1, size);
+
+            new msbD = BigIntMsb(div), shift;
+            // long division with skipping zeros by shifting
+            for(sizeN <<= 4; sizeN >= (shift = msbD - BigIntMsb(remainder)); sizeN -= shift) {
+                if(shift == 0) { // no shift but we know that the number is smaller than div so shift by 1
+                    if(shift == sizeN) { // we can't shift more
+                        break;
+                    }
                     BigIntShiftLeft(remainder, 1);
-                    BigIntShiftLeft(quotient, 1);
+                    shift++;
+                } else {
+                    BigIntShiftLeft(remainder, shift);
 
-                    if(BigIntCmp(remainder, div) != -1) {
-                        raddr = remainder;
-                        daddr = div;
-                        carry = 0;
-                        s = size;
-                        // substract divisor from remainder inplace
-                        while(s) {
-                            #emit load.s.pri raddr
-                            #emit add.c 2
-                            #emit stor.s.pri raddr
-                            #emit lodb.i 2
-                            #emit move.alt
-                            #emit load.s.pri daddr
-                            #emit add.c 2
-                            #emit stor.s.pri daddr
-                            #emit lodb.i 2
-                            #emit sub.alt
-                            #emit load.s.alt carry
-                            #emit sub
-                            #emit load.s.alt raddr
-                            #emit strb.i 2
-                            #emit shr.c.pri 31
-                            #emit stor.s.pri carry
-                            #emit dec.s s
+                    if(BigIntCmp(remainder, div) == -1) { // remainder < div
+                        if(shift == sizeN) { // we can't shift more
+                            BigIntShiftRight(remainder, shift); // fix remainder
+                            break;
                         }
-                        BigIntIncInternal(quotient);
+                        BigIntShiftLeft(remainder, 1);
+                        shift++;
                     }
                 }
-                raddr = quotient + size + 2;
-                // check for trimable cells in quotient
-                do {
+                // substract divisor from remainder inplace
+                raddr = remainder;
+                daddr = div;
+                carry = 0;
+                s = size;
+
+                while(s) {
                     #emit load.s.pri raddr
-                    #emit add.c -2
+                    #emit add.c 2
                     #emit stor.s.pri raddr
                     #emit lodb.i 2
+                    #emit move.alt
+                    #emit load.s.pri daddr
+                    #emit add.c 2
+                    #emit stor.s.pri daddr
+                    #emit lodb.i 2
+                    #emit sub.alt
+                    #emit load.s.alt carry
+                    #emit sub
+                    #emit load.s.alt raddr
+                    #emit strb.i 2
+                    #emit shr.c.pri 31
                     #emit stor.s.pri carry
-                } while(!carry);
-                // correct size of quotient
-                BigIntSetSize(quotient, (raddr - quotient) >> 1);
-                // move hidden / first word of remainder
+                    #emit dec.s s
+                }
+                // move and increase quotient
+                BigIntShiftLeft(quotient, shift);
+                BigIntIncInternal(quotient);
+            }
+            if(sizeN) {
+                BigIntShiftLeft(remainder, sizeN);
+                BigIntShiftLeft(quotient, sizeN);
+            }
+            raddr = quotient + size + 2;
+            // check for trimable cells in quotient
+            do {
                 #emit load.s.pri raddr
-                #emit add.c 2
+                #emit add.c -2
                 #emit stor.s.pri raddr
-                #emit move.alt
-                #emit load.s.pri remainder
                 #emit lodb.i 2
-                #emit strb.i 2
-                // shift remainder downwards
-                raw_memcpy(raddr, remainder + size + 2, 2, size, size);
-                // check for trimable cells in remainder
-                raddr = (remainder = raddr) + size + 2;
+                #emit stor.s.pri carry
+            } while(!carry);
+            // correct size of quotient
+            BigIntSetSize(quotient, (raddr - quotient) >> 1);
+            // move hidden / first word of remainder
+            #emit load.s.pri raddr
+            #emit add.c 2
+            #emit stor.s.pri raddr
+            #emit move.alt
+            #emit load.s.pri remainder
+            #emit lodb.i 2
+            #emit strb.i 2
+            // shift remainder downwards
+            raw_memcpy(raddr, remainder + size + 2, 2, size, size);
+            // check for trimable cells in remainder
+            raddr = (remainder = raddr) + size + 2;
 
-                do {
-                    #emit load.s.pri raddr
-                    #emit add.c -2
-                    #emit stor.s.pri raddr
-                    #emit lodb.i 2
-                    #emit stor.s.pri carry
-                } while(!carry);
-                // correct size
-                BigIntSetSize(remainder, (raddr - remainder) >> 1);
-                // free heap
+            do {
                 #emit load.s.pri raddr
-                #emit add.c 2
-                #emit sctrl 2 // heap
-            }
-            if(BigIntIsNeg(dividend) ^ BigIntIsNeg(divisor)) {
-                BigIntNeg(quotient);
-            }
-            BigIntPrint(quotient);
-            BigIntPrint(remainder);
-
-            return quotient;
+                #emit add.c -2
+                #emit stor.s.pri raddr
+                #emit lodb.i 2
+                #emit stor.s.pri carry
+            } while(!carry);
+            // correct size
+            BigIntSetSize(remainder, (raddr - remainder) >> 1);
+            // free heap
+            #emit load.s.pri raddr
+            #emit add.c 2
+            #emit sctrl 2 // heap
         }
+        if(BigIntIsNeg(dividend) ^ BigIntIsNeg(divisor)) {
+            BigIntNeg(quotient);
+        }
+        BigIntPrint(quotient);
+        BigIntPrint(remainder);
+
+        return quotient;
     }
     return false;
+}
+
+stock BigIntMsb(oper) { // returns the most significant bit position, starting at 1 instead of 0, 0 will be returned if no bit is set or if invalid operator
+    debug("BigIntMsb(%d)", oper);
+
+    if(oper) {
+        new value;
+        new size = BigIntGetSize(oper);
+        new addr = oper + ((size + 1) << 1);
+
+        while(size) {
+            size--;
+
+            #emit load.s.pri addr
+            #emit add.c -2
+            #emit stor.s.pri addr
+            #emit lodb.i 2
+            #emit stor.s.pri value
+
+            if(value) {
+                new msb = (size << 4) + 1;
+
+                if(value & 0xFF00) {
+                    value >>= 8;
+                    msb += 8;
+                }
+                if(value & 0xF0) {
+                    value >>= 4;
+                    msb += 4;
+                }
+                if(value & 0b1100) {
+                    value >>= 2;
+                    msb += 2;
+                }
+                if(value & 0b10) {
+                    msb++;
+                }
+                return msb;
+            }
+        }
+    }
+    return 0;
 }
 
 stock BigIntShiftLeft(oper, lshift) { // inplace
