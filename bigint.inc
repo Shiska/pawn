@@ -5,6 +5,8 @@
     #define BigIntPrint(%0);
 #endif
 
+#pragma unused SAMP_INCLUDES_VERSION // generates warning with the default compiler
+
 // always use cBigInt for variables otherwise you could overwrite an initialized variable
 // resulting that the deconstructor, for the overwritten variable, isn't called anymore, thus creating a leak in the heap
 #define cBigInt: const BigInt:
@@ -16,7 +18,7 @@ static stock raw_memcpy(dest, const source, index, numbytes, maxlength) {
 
     #emit stack 8
     #emit sysreq.c memcpy
-    #emit stack -8
+    #emit stack 0xFFFFFFF8 // -8
     #emit retn
 
     return 0;
@@ -30,7 +32,7 @@ static stock raw_memset(address, numbytes, value) {
             #emit load.s.pri address
             #emit load.s.alt numbytes
             #emit add
-            #emit add.c -1
+            #emit add.c 0xFFFFFFFF // -1
             #emit move.alt
             #emit load.s.pri value
             #emit strb.i 1
@@ -39,7 +41,7 @@ static stock raw_memset(address, numbytes, value) {
             #emit load.s.pri address
             #emit load.s.alt numbytes
             #emit add
-            #emit add.c -2
+            #emit add.c 0xFFFFFFFE // -2
             #emit move.alt
             #emit load.s.pri value
             #emit strb.i 2
@@ -48,7 +50,7 @@ static stock raw_memset(address, numbytes, value) {
             #emit load.s.pri address
             #emit load.s.alt numbytes
             #emit add
-            #emit add.c -3
+            #emit add.c 0xFFFFFFFD // -3
             #emit move.alt
             #emit load.s.pri value
             #emit strb.i 2 // strb.i can only write 1/2 or 4 bytes
@@ -443,7 +445,7 @@ static stock BigIntTrim(address) {
         // check for empty cells
         do {
             #emit load.s.pri addr
-            #emit add.c -2
+            #emit add.c 0xFFFFFFFE // -2
             #emit stor.s.pri addr
             #emit lodb.i 2
             #emit stor.s.pri value
@@ -471,7 +473,7 @@ static stock BigIntPrint(address) {
 
         while(size--) {
             #emit load.s.pri addr
-            #emit add.c -2
+            #emit add.c 0xFFFFFFFE // -2
             #emit stor.s.pri addr
             #emit lodb.i 2
             #emit stor.s.pri value
@@ -1315,7 +1317,7 @@ static stock BigIntDiv(dividend, divisor, & quotient, & remainder) {
             // divide cells
             while(sizeN) {
                 #emit load.s.pri daddr
-                #emit add.c -2
+                #emit add.c 0xFFFFFFFE // -2
                 #emit stor.s.pri daddr
                 #emit lodb.i 2
                 #emit load.s.alt mod
@@ -1326,7 +1328,7 @@ static stock BigIntDiv(dividend, divisor, & quotient, & remainder) {
                 #emit stor.s.alt mod
                 #emit move.alt
                 #emit load.s.pri qaddr
-                #emit add.c -2
+                #emit add.c 0xFFFFFFFE // -2
                 #emit stor.s.pri qaddr
                 #emit xchg
                 #emit strb.i 2
@@ -1407,7 +1409,7 @@ static stock BigIntDiv(dividend, divisor, & quotient, & remainder) {
             // check for trimable cells in quotient
             do {
                 #emit load.s.pri raddr
-                #emit add.c -2
+                #emit add.c 0xFFFFFFFE // -2
                 #emit stor.s.pri raddr
                 #emit lodb.i 2
                 #emit stor.s.pri carry
@@ -1429,7 +1431,7 @@ static stock BigIntDiv(dividend, divisor, & quotient, & remainder) {
 
             do {
                 #emit load.s.pri raddr
-                #emit add.c -2
+                #emit add.c 0xFFFFFFFE // -2
                 #emit stor.s.pri raddr
                 #emit lodb.i 2
                 #emit stor.s.pri carry
@@ -1464,7 +1466,7 @@ stock BigIntMsb(oper) { // returns the most significant bit position, starting a
             size--;
 
             #emit load.s.pri addr
-            #emit add.c -2
+            #emit add.c 0xFFFFFFFE // -2
             #emit stor.s.pri addr
             #emit lodb.i 2
             #emit stor.s.pri value
@@ -1512,7 +1514,7 @@ stock BigIntShiftLeft(oper, lshift) { // inplace
         if(size >= 1) {
             while(--size) { // oper[i] = (oper[i - offset] << lshift) | (oper[i - offset - 1] >>> rshift);
                 #emit load.s.pri addr
-                #emit add.c -2
+                #emit add.c 0xFFFFFFFE // -2
                 #emit stor.s.pri addr
                 #emit load.s.alt offset
                 #emit sub
@@ -1523,7 +1525,7 @@ stock BigIntShiftLeft(oper, lshift) { // inplace
                 #emit move.alt
                 #emit load.s.pri tmp
                 #emit stor.s.alt tmp // first result
-                #emit add.c -2 // second cell
+                #emit add.c 0xFFFFFFFE // -2 // second cell
                 #emit lodb.i 2
                 #emit load.s.alt rshift
                 #emit shr // second result
@@ -1534,7 +1536,7 @@ stock BigIntShiftLeft(oper, lshift) { // inplace
             } {}
             // last affected cell
             #emit load.s.pri addr
-            #emit add.c -2
+            #emit add.c 0xFFFFFFFE // -2
             #emit stor.s.pri addr
             #emit load.s.alt offset
             #emit sub
@@ -1549,7 +1551,7 @@ stock BigIntShiftLeft(oper, lshift) { // inplace
 
             while(size--) {
                 #emit load.s.pri addr
-                #emit add.c -2
+                #emit add.c 0xFFFFFFFE // -2
                 #emit stor.s.pri addr
                 #emit move.alt
                 #emit zero.pri
@@ -1666,12 +1668,12 @@ static stock BigIntCmp(oper1, oper2) { // -1, 0, 1 - oper1 is less than, equal o
 
         while(!size1 && size2) {
             #emit load.s.pri oper1
-            #emit add.c -2
+            #emit add.c 0xFFFFFFFE // -2
             #emit stor.s.pri oper1
             #emit lodb.i 2
             #emit move.alt
             #emit load.s.pri oper2
-            #emit add.c -2
+            #emit add.c 0xFFFFFFFE // -2
             #emit stor.s.pri oper2
             #emit lodb.i 2
             #emit sub.alt
@@ -2263,7 +2265,7 @@ stock bool: operator<(BigInt: oper1, BigIntResult: oper2) {
 
     BigIntCmpR(_: oper1, oper2);
     // avoid destructor of BigInt
-    #emit eq.c.pri -1
+    #emit eq.c.pri 0xFFFFFFFF // -1
     #emit retn
 
     return false;
@@ -2274,7 +2276,7 @@ stock bool: operator<(BigInt: oper1, BigInt: oper2) {
 
     BigIntCmp(_: oper1, _: oper2);
     // avoid destructor of BigInt
-    #emit eq.c.pri -1
+    #emit eq.c.pri 0xFFFFFFFF // -1
     #emit retn
 
     return false;
@@ -2297,7 +2299,7 @@ stock bool: operator<(BigInt: oper1, oper2) {
 
     BigIntCmpR(_: oper1, BigInt(oper2));
     // avoid destructor of BigInt
-    #emit eq.c.pri -1
+    #emit eq.c.pri 0xFFFFFFFF // -1
     #emit retn
 
     return false;
@@ -2325,7 +2327,7 @@ stock bool: operator>(BigIntResult: oper1, BigInt: oper2) {
 
     BigIntCmpR(_: oper2, oper1);
     // avoid destructor of BigInt
-    #emit eq.c.pri -1
+    #emit eq.c.pri 0xFFFFFFFF // -1
     #emit retn
 
     return false;
@@ -2381,7 +2383,7 @@ stock bool: operator>(oper1, BigInt: oper2) {
 
     BigIntCmpR(_: oper2, BigInt(oper1));
     // avoid destructor of BigInt
-    #emit eq.c.pri -1
+    #emit eq.c.pri 0xFFFFFFFF // -1
     #emit retn
 
     return false;
@@ -2398,7 +2400,7 @@ stock bool: operator<=(BigIntResult: oper1, BigInt: oper2) {
 
     BigIntCmpR(_: oper2, oper1);
     // avoid destructor of BigInt
-    #emit eq.c.pri -1 // operators swapped
+    #emit eq.c.pri 0xFFFFFFFF // -1 // operators swapped
     #emit not
     #emit retn
 
@@ -2458,7 +2460,7 @@ stock bool: operator<=(oper1, BigInt: oper2) {
 
     BigIntCmpR(_: oper2, BigInt(oper1));
     // avoid destructor of BigInt
-    #emit eq.c.pri -1 // operators swapped
+    #emit eq.c.pri 0xFFFFFFFF // -1 // operators swapped
     #emit not
     #emit retn
 
@@ -2488,7 +2490,7 @@ stock bool: operator>=(BigInt: oper1, BigIntResult: oper2) {
 
     BigIntCmpR(_: oper1, oper2);
     // avoid destructor of BigInt
-    #emit eq.c.pri -1
+    #emit eq.c.pri 0xFFFFFFFF // -1
     #emit not
     #emit retn
 
@@ -2500,7 +2502,7 @@ stock bool: operator>=(BigInt: oper1, BigInt: oper2) {
 
     BigIntCmp(_: oper1, _: oper2);
     // avoid destructor of BigInt
-    #emit eq.c.pri -1
+    #emit eq.c.pri 0xFFFFFFFF // -1
     #emit not
     #emit retn
 
@@ -2524,7 +2526,7 @@ stock bool: operator>=(BigInt: oper1, oper2) {
 
     BigIntCmpR(_: oper1, BigInt(oper2));
     // avoid destructor of BigInt
-    #emit eq.c.pri -1
+    #emit eq.c.pri 0xFFFFFFFF // -1
     #emit not
     #emit retn
 
@@ -2599,7 +2601,7 @@ static stock BigIntToHexInternal(address, dest[], const size = sizeof dest) {
 
         while(addr != address) {
             #emit load.s.pri addr
-            #emit add.c -2
+            #emit add.c 0xFFFFFFFE // -2
             #emit stor.s.pri addr
             #emit lodb.i 2
             #emit stor.s.pri hex
@@ -2661,7 +2663,7 @@ stock BigIntToDecimal(const & BigInt: address, dest[], size = sizeof dest) {
 
         while(isize) {
             #emit load.s.pri addr
-            #emit add.c -2
+            #emit add.c 0xFFFFFFFE // -2
             #emit stor.s.pri addr
             #emit lodb.i 2
             #emit stor.s.pri carry
