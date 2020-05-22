@@ -1353,10 +1353,16 @@ static stock BigIntDiv(dividend, divisor, & quotient, & remainder) {
 
             new msbD = BigIntMsb(div), shift;
             // long division with skipping zeros by shifting
-            for(sizeN <<= 4; sizeN >= (shift = msbD - BigIntMsb(remainder)); sizeN -= shift) {
-                if(shift == 0) { // no shift but we know that the number is smaller than div so shift by 1
+            for(sizeN <<= 4; ; sizeN -= shift) {
+                shift = msbD - BigIntMsb(remainder);
+
+                if(sizeN < shift) { // shift remaining size
+                    BigIntShiftLeft(remainder, sizeN);
+                    BigIntShiftLeft(quotient, sizeN);
+                    break;
+                } else if(shift == 0) { // no shift but we know that the number is smaller than div so shift by 1
                     if(shift == sizeN) { // we can't shift more
-                        break;
+                        break; // so we are done
                     }
                     BigIntShiftLeft(remainder, 1);
                     shift++;
@@ -1365,7 +1371,7 @@ static stock BigIntDiv(dividend, divisor, & quotient, & remainder) {
 
                     if(BigIntCmp(remainder, div) == -1) { // remainder < div
                         if(shift == sizeN) { // we can't shift more
-                            BigIntShiftRight(remainder, shift); // fix remainder
+                            BigIntShiftLeft(quotient, shift); // shift quotient, remainder is already shifted
                             break;
                         }
                         BigIntShiftLeft(remainder, 1);
@@ -1400,10 +1406,6 @@ static stock BigIntDiv(dividend, divisor, & quotient, & remainder) {
                 // move and increase quotient
                 BigIntShiftLeft(quotient, shift);
                 BigIntIncInternal(quotient);
-            }
-            if(sizeN) {
-                BigIntShiftLeft(remainder, sizeN);
-                BigIntShiftLeft(quotient, sizeN);
             }
             raddr = quotient + size + 2;
             // check for trimable cells in quotient
@@ -1644,21 +1646,41 @@ static stock BigIntCmp(oper1, oper2) { // -1, 0, 1 - oper1 is less than, equal o
         if(isneg1 != isneg2) {
             return _: isneg2 - _: isneg1; // -1, 1
         }
-        // check size if both negative or both positive
-        new size1 = BigIntGetSize(oper1);
-        new size2 = BigIntGetSize(oper2);
-
-        if(size1 != size2) { // clamp to ensure -1 and 1 instead of any negative / positive value
-            return clamp(size1 - size2, -1, 1); // checking for -1 and 1 produces less opcode than checking for positive / negative
-        }
-        // compare bytes if size match
-        if(isneg1) { // if both negative switch operators
+        if(isneg1) { // if both negative switch operators to reverse result
             #emit load.s.pri oper1
             #emit load.s.alt oper2
             #emit stor.s.pri oper2
             #emit stor.s.alt oper1
         }
-        // compare from highest to lowest
+        new size1 = BigIntGetSize(oper1);
+        new size2 = BigIntGetSize(oper2);
+
+        if(size1 != size2) { // if size don't match check if the bigger int got only zeros
+            new diff, addr, value, retn;
+
+            if(size1 < size2) {
+                retn = -1;
+                diff = size2 - size1;
+                addr = oper2 + ((size2 = size1) << 1);
+            } else {
+                retn = 1;
+                diff = size1 - size2;
+                addr = oper1 + ((size1 = size2) << 1);
+            }
+            while(diff) {
+                #emit load.s.pri addr
+                #emit add.c 2
+                #emit stor.s.pri addr
+                #emit lodb.i 2
+                #emit stor.s.pri value
+
+                if(value) {
+                    return retn;
+                }
+                diff--;
+            }
+        }
+        // compare bytes if size match from highest to lowest
         size1 = (size1 + 1) << 1;
 
         oper1 += size1;

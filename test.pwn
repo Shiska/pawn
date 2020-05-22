@@ -186,6 +186,18 @@ Test:Comparision() {
 }
 
 Test:AddSub() {
+    for(new i = 0; i < 100; ++i) {
+        new int1 = random(1073741824);
+        new int2 = random(1073741824);
+
+        new cBigInt: bint1 = int1;
+        new cBigInt: bint2 = int2;
+        new cBigInt: bint3 = bint1 + bint2;
+        new cBigInt: bint4 = bint1 - bint2;
+
+        ASSERT(bint3 == int1 + int2);
+        ASSERT(bint4 == int1 - int2);
+    }
     new cBigInt: int1 = -2147483647;
     new cBigInt: int2 = -(int1 + int1 + int1 + int1); // 8589934588‬
     new cBigInt: int3 = -int2; // -8589934588‬
@@ -214,6 +226,16 @@ Test:AddSub() {
 }
 
 Test:Mul() {
+    for(new i = 0; i < 100; ++i) {
+        new int1 = random(65536);
+        new int2 = random(32768);
+
+        new cBigInt: bint1 = int1;
+        new cBigInt: bint2 = int2;
+        new cBigInt: bint3 = bint1 * bint2;
+
+        ASSERT(bint3 == int1 * int2);
+    }
     new cBigInt: int1 = -2147483647;
     new cBigInt: int2 = int1 * 4; // -8589934588‬
 
@@ -261,8 +283,13 @@ Test:Mul() {
 Test:Shift() {
     new cBigInt: int1 = 66666;
 
-    BigIntShiftLeft(_: int1, 15);
-    BigIntShiftRight(_: int1, 15);
+    BigIntShiftLeft(_: int1, 13);
+
+    ASSERT(int1 == 546127872);
+
+    BigIntShiftRight(_: int1, 20);
+
+    ASSERT(int1 == 520);
 }
 
 Test:Karatsuba() {
