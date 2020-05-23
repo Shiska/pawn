@@ -1,6 +1,5 @@
 #define RUN_TESTS
 
-// #include <a_samp>
 #include <a_samp>
 #include <YSI_Core\y_testing>
 
@@ -20,9 +19,6 @@ Test:Operator() { // calls all operators at least once
     // assignment
     new cBigInt: int1 = 5; // BigInt: operator=(oper)
     new cBigInt: int2 = int1; // BigInt: operator=(BigInt: oper)
-
-    ASSERT(int1 == int2);
-    ASSERT(int2 == 5);
     // BigInt: operator=(BigIntResult: oper) will be called by any calculation
     // addition
     // BigIntResult: operator+(BigInt: oper1, oper2)                        - int + 10
@@ -31,14 +27,10 @@ Test:Operator() { // calls all operators at least once
     // BigIntResult: operator+(BigIntResult: oper1, oper2)                  - result + 5
     // BigIntResult: operator+(BigIntResult: oper1, BigIntResult: oper2)    - result + result
     new cBigInt: int3 = (int1 + 10) + (int1 + int2 + int2) + 5;
-
-    ASSERT(int3 == 35);
     // neg
     // BigIntResult: operator-(BigInt: oper)                                - (-int)
     // BigIntResult: operator-(BigIntResult: oper)                          - (-result)
-    new cBigInt: int4 = -(-int3);
-
-    ASSERT(int4 == 35);
+    new cBigInt: int4 = -(-(-int3));
     // subtraction
     // BigIntResult: operator-(BigInt: oper1, oper2)                        - int - 10
     // BigIntResult: operator-(BigInt: oper1, BigInt: oper2)                - int - int
@@ -48,9 +40,7 @@ Test:Operator() { // calls all operators at least once
     // BigIntResult: operator-(oper1, BigInt: oper2)                        - 20 - int
     // BigIntResult: operator-(BigIntResult: oper1, oper2)                  - result - 30
     // BigIntResult: operator-(oper1, BigIntResult: oper2)                  - 40 - result
-    new cBigInt: int5 = (int3 - (int1 - 10)) - ((int1 - int2) - int4) - (40 - ((20 - int3) - 30));
-
-    ASSERT(int5 == -10);
+    new cBigInt: int5 = (int3 - (int1 - 10)) - ((int1 - int2) - int3) - (40 - ((20 - int3) - 30));
     // multiplication
     // BigIntResult: operator*(BigInt: oper1, oper2)                        - int * 10
     // BigIntResult: operator*(BigInt: oper1, BigInt: oper2)                - int * int
@@ -58,94 +48,94 @@ Test:Operator() { // calls all operators at least once
     // BigIntResult: operator*(BigIntResult: oper1, oper2)                  - result * 5
     // BigIntResult: operator*(BigIntResult: oper1, BigIntResult: oper2)    - result * result
     new cBigInt: int6 = (int1 * 10) * (int1 * int2 * int2) * 5;
-
-    ASSERT(int6 == 31250);
     // division
-    // BigIntResult: operator/(BigInt: oper1, oper2)                        - int / 10
+    // BigIntResult: operator/(BigInt: oper1, oper2)                        - int / 2
     // BigIntResult: operator/(BigInt: oper1, BigInt: oper2)                - int / int
     // BigIntResult: operator/(BigInt: oper1, BigIntResult: oper2)          - int / result
     // BigIntResult: operator/(BigIntResult: oper1, BigInt: oper2)          - result / int
     // BigIntResult: operator/(BigIntResult: oper1, BigIntResult: oper2)    - result / result
-    // BigIntResult: operator/(oper1, BigInt: oper2)                        - 20 / int
-    // BigIntResult: operator/(BigIntResult: oper1, oper2)                  - result / 30
-    // BigIntResult: operator/(oper1, BigIntResult: oper2)                  - 40 / result
+    // BigIntResult: operator/(oper1, BigInt: oper2)                        - 200 / int
+    // BigIntResult: operator/(BigIntResult: oper1, oper2)                  - result / 3
+    // BigIntResult: operator/(oper1, BigIntResult: oper2)                  - 33 / result
     new cBigInt: int7 = ((int6 / int2) / int1) / (int3 / (int1 / 2)) / (33 / ((200 / int3) / 3));
-
-    ASSERT(int7 == 2);
     // modulo
-    // BigIntResult: operator%(BigInt: oper1, oper2)                        - int % 10
+    // BigIntResult: operator%(BigInt: oper1, oper2)                        - int % 9
     // BigIntResult: operator%(BigInt: oper1, BigInt: oper2)                - int % int
     // BigIntResult: operator%(BigInt: oper1, BigIntResult: oper2)          - int % result
     // BigIntResult: operator%(BigIntResult: oper1, BigInt: oper2)          - result % int
     // BigIntResult: operator%(BigIntResult: oper1, BigIntResult: oper2)    - result % result
-    // BigIntResult: operator%(oper1, BigInt: oper2)                        - 20 % int
-    // BigIntResult: operator%(BigIntResult: oper1, oper2)                  - result % 30
-    // BigIntResult: operator%(oper1, BigIntResult: oper2)                  - 40 % result
+    // BigIntResult: operator%(oper1, BigInt: oper2)                        - 200 % int
+    // BigIntResult: operator%(BigIntResult: oper1, oper2)                  - result % 15
+    // BigIntResult: operator%(oper1, BigIntResult: oper2)                  - 33 % result
     new cBigInt: int8 = ((int6 % int3) % int6) % (int3 % (int3 % 9)) % (33 % ((200 % int3) % 15));
-
+    // equal - bool: operator==(BigInt: oper1, oper2)
+    ASSERT(int1 == 5);
+    ASSERT(int2 == 5);
+    ASSERT(int3 == 35);
+    ASSERT(int4 == -35);
+    ASSERT(int5 == -10);
+    ASSERT(int6 == 31250);
+    ASSERT(int7 == 2);
     ASSERT(int8 == 0);
-    // equal
-    if(-int1 == -int2) {} // bool: operator==(BigIntResult: oper1, BigIntResult: oper2)
-    if(int3 == -int4) {} // bool: operator==(BigInt: oper1, BigIntResult: oper2)
-    if(int5 == int6) {}  // bool: operator==(BigInt: oper1, BigInt: oper2)
-    if(-int1 == 5) {} // bool: operator==(BigIntResult: oper1, oper2)
-    if(int3 == -5) {} // bool: operator==(BigInt: oper1, oper2)
+    // other equal operators
+    ASSERT(-int1 == -int2); // bool: operator==(BigIntResult: oper1, BigIntResult: oper2)
+    ASSERT(int3 == -int4); // bool: operator==(BigInt: oper1, BigIntResult: oper2)
+    ASSERT(int1 == int2);  // bool: operator==(BigInt: oper1, BigInt: oper2)
+    ASSERT(-int1 == -5); // bool: operator==(BigIntResult: oper1, oper2)
     // not equal
-    if(-int1 != -int2) {} // bool: operator!=(BigIntResult: oper1, BigIntResult: oper2)
-    if(int3 != -int4) {} // bool: operator!=(BigInt: oper1, BigIntResult: oper2)
-    if(int5 != int6) {}  // bool: operator!=(BigInt: oper1, BigInt: oper2)
-    if(-int1 != 5) {} // bool: operator!=(BigIntResult: oper1, oper2)
-    if(int3 != -5) {} // bool: operator!=(BigInt: oper1, oper2)
+    ASSERT(-int3 != -int4); // bool: operator!=(BigIntResult: oper1, BigIntResult: oper2)
+    ASSERT(int1 != -int2); // bool: operator!=(BigInt: oper1, BigIntResult: oper2)
+    ASSERT(int3 != int4);  // bool: operator!=(BigInt: oper1, BigInt: oper2)
+    ASSERT(-int1 != cellmin); // bool: operator!=(BigIntResult: oper1, oper2)
+    ASSERT(int3 != cellmax); // bool: operator!=(BigInt: oper1, oper2)
     // less
-    if(-int1 < -int2) {} // bool: operator<(BigIntResult: oper1, BigIntResult: oper2)
-    if(-int3 < int4) {} // bool: operator<(BigIntResult: oper1, BigInt: oper2)
-    if(int4 < -int3) {} // bool: operator<(BigInt: oper1, BigIntResult: oper2)
-    if(int5 < int6) {} // bool: operator<(BigInt: oper1, BigInt: oper2)
-    if(-int1 < 5) {} // bool: operator<(BigIntResult: oper1, oper2)
-    if(5 < -int1) {} // bool: operator<(oper1, BigIntResult: oper2)
-    if(int3 < -5) {} // bool: operator<(BigInt: oper1, oper2)
-    if(-5 < int3) {} // bool: operator<(oper1, BigInt: oper2)
+    ASSERT(-int5 < -int4); // bool: operator<(BigIntResult: oper1, BigIntResult: oper2)
+    ASSERT(-int5 < int3); // bool: operator<(BigIntResult: oper1, BigInt: oper2)
+    ASSERT(int4 < -int2); // bool: operator<(BigInt: oper1, BigIntResult: oper2)
+    ASSERT(int4 < int5); // bool: operator<(BigInt: oper1, BigInt: oper2)
+    ASSERT(-int1 < -4); // bool: operator<(BigIntResult: oper1, oper2)
+    ASSERT(-6 < -int1); // bool: operator<(oper1, BigIntResult: oper2)
+    ASSERT(int1 < 6); // bool: operator<(BigInt: oper1, oper2)
+    ASSERT(4 < int1); // bool: operator<(oper1, BigInt: oper2)
     // greater
-    if(-int1 > -int2) {} // bool: operator>(BigIntResult: oper1, BigIntResult: oper2)
-    if(-int3 > int4) {} // bool: operator>(BigIntResult: oper1, BigInt: oper2)
-    if(int4 > -int3) {} // bool: operator>(BigInt: oper1, BigIntResult: oper2)
-    if(int5 > int6) {} // bool: operator>(BigInt: oper1, BigInt: oper2)
-    if(-int1 > 5) {} // bool: operator>(BigIntResult: oper1, oper2)
-    if(5 > -int1) {} // bool: operator>(oper1, BigIntResult: oper2)
-    if(int3 > -5) {} // bool: operator>(BigInt: oper1, oper2)
-    if(-5 > int3) {} // bool: operator>(oper1, BigInt: oper2)
+    ASSERT(-int4 > -int5); // bool: operator>(BigIntResult: oper1, BigIntResult: oper2)
+    ASSERT(-int2 > int4); // bool: operator>(BigIntResult: oper1, BigInt: oper2)
+    ASSERT(int3 > -int5); // bool: operator>(BigInt: oper1, BigIntResult: oper2)
+    ASSERT(int5 > int4); // bool: operator>(BigInt: oper1, BigInt: oper2)
+    ASSERT(-int1 > -6); // bool: operator>(BigIntResult: oper1, oper2)
+    ASSERT(-4 > -int1); // bool: operator>(oper1, BigIntResult: oper2)
+    ASSERT(int1 > 4); // bool: operator>(BigInt: oper1, oper2)
+    ASSERT(6 > int1); // bool: operator>(oper1, BigInt: oper2)
     // less equal
-    if(-int1 <= -int2) {} // bool: operator<=(BigIntResult: oper1, BigIntResult: oper2)
-    if(-int3 <= int4) {} // bool: operator<=(BigIntResult: oper1, BigInt: oper2)
-    if(int4 <= -int3) {} // bool: operator<=(BigInt: oper1, BigIntResult: oper2)
-    if(int5 <= int6) {} // bool: operator<=(BigInt: oper1, BigInt: oper2)
-    if(-int1 <= 5) {} // bool: operator<=(BigIntResult: oper1, oper2)
-    if(5 <= -int1) {} // bool: operator<=(oper1, BigIntResult: oper2)
-    if(int3 <= -5) {} // bool: operator<=(BigInt: oper1, oper2)
-    if(-5 <= int3) {} // bool: operator<=(oper1, BigInt: oper2)
+    ASSERT(-int1 <= -int2); // bool: operator<=(BigIntResult: oper1, BigIntResult: oper2)
+    ASSERT(-int3 <= int4); // bool: operator<=(BigIntResult: oper1, BigInt: oper2)
+    ASSERT(int4 <= -int3); // bool: operator<=(BigInt: oper1, BigIntResult: oper2)
+    ASSERT(int5 <= int6); // bool: operator<=(BigInt: oper1, BigInt: oper2)
+    ASSERT(-int1 <= -4); // bool: operator<=(BigIntResult: oper1, oper2)
+    ASSERT(-6 <= -int1); // bool: operator<=(oper1, BigIntResult: oper2)
+    ASSERT(int3 <= 35); // bool: operator<=(BigInt: oper1, oper2)
+    ASSERT(35 <= int3); // bool: operator<=(oper1, BigInt: oper2)
     // greater equal
-    if(-int1 >= -int2) {} // bool: operator>=(BigIntResult: oper1, BigIntResult: oper2)
-    if(-int3 >= int4) {} // bool: operator>=(BigIntResult: oper1, BigInt: oper2)
-    if(int4 >= -int3) {} // bool: operator>=(BigInt: oper1, BigIntResult: oper2)
-    if(int5 >= int6) {} // bool: operator>=(BigInt: oper1, BigInt: oper2)
-    if(-int1 >= 5) {} // bool: operator>=(BigIntResult: oper1, oper2)
-    if(5 >= -int1) {} // bool: operator>=(oper1, BigIntResult: oper2)
-    if(int3 >= -5) {} // bool: operator>=(BigInt: oper1, oper2)
-    if(-5 >= int3) {} // bool: operator>=(oper1, BigInt: oper2)
+    ASSERT(-int1 >= -int2); // bool: operator>=(BigIntResult: oper1, BigIntResult: oper2)
+    ASSERT(-int3 >= int4); // bool: operator>=(BigIntResult: oper1, BigInt: oper2)
+    ASSERT(int4 >= -int3); // bool: operator>=(BigInt: oper1, BigIntResult: oper2)
+    ASSERT(int6 >= int5); // bool: operator>=(BigInt: oper1, BigInt: oper2)
+    ASSERT(-int1 >= -6); // bool: operator>=(BigIntResult: oper1, oper2)
+    ASSERT(-4 >= -int1); // bool: operator>=(oper1, BigIntResult: oper2)
+    ASSERT(int3 >= 35); // bool: operator>=(BigInt: oper1, oper2)
+    ASSERT(35 >= int3); // bool: operator>=(oper1, BigInt: oper2)
     // not
-    if(!-int1) {} // bool: operator!(BigIntResult: oper)
-    if(!int1) {} // bool: operator!(BigInt: oper)
+    ASSERT(!-int8); // bool: operator!(BigIntResult: oper)
+    ASSERT(!int8); // bool: operator!(BigInt: oper)
     // destructor
     // operator~(BigInt: oper[], size)
 }
 
-Test:Comparision() {
-    new cBigInt: int1 = 5;
+Test:Comparision() { // all sign and value related cases
+    new cBigInt: int1 = random(32767) << 16;
     new cBigInt: int2 = -int1;
-
-    ASSERT(int1 == -int2);
-    ASSERT(-int1 == int2);
-
+    new cBigInt: int3 = random(32767);
+    // sign checks
     ASSERT(int1 != int2);
     ASSERT(-int1 != -int2);
 
@@ -158,19 +148,8 @@ Test:Comparision() {
     ASSERT(int2 <= int1);
     ASSERT(-int2 >= -int1);
 
-    ASSERT(int2 <= -int1);
-    ASSERT(-int2 >= int1);
-
     ASSERT(int1 >= int2);
     ASSERT(-int1 <= -int2);
-
-    ASSERT(int1 >= -int2);
-    ASSERT(-int1 <= int2);
-
-    new cBigInt: int3 = 3;
-
-    ASSERT(int1 != int3);
-    ASSERT(-int1 != -int3);
 
     ASSERT(int2 != int3);
     ASSERT(-int2 != -int3);
@@ -178,11 +157,23 @@ Test:Comparision() {
     ASSERT(int2 < int3);
     ASSERT(-int2 > -int3);
 
-    ASSERT(int1 > int3);
-    ASSERT(-int1 < -int3);
-
     ASSERT(int2 <= int1);
     ASSERT(-int2 >= -int1);
+    // value checks
+    ASSERT(int1 == -int2);
+    ASSERT(-int1 == int2);
+
+    ASSERT(int2 <= -int1);
+    ASSERT(-int2 >= int1);
+
+    ASSERT(int1 >= -int2);
+    ASSERT(-int1 <= int2);
+
+    ASSERT(int1 != int3);
+    ASSERT(-int1 != -int3);
+
+    ASSERT(int1 > int3);
+    ASSERT(-int1 < -int3);
 }
 
 Test:AddSub() {
@@ -349,13 +340,26 @@ Test:Div() {
         new cBigInt: bint3 = int3;
         new cBigInt: bint4 = bint1 / bint2;
         new cBigInt: bint5 = bint1 % bint2;
-        new cBigInt: bint6 = bint1 / bint3;
-        new cBigInt: bint7 = bint1 % bint3;
+        new BigInt: bint6, BigInt: bint7;
+
+        BigIntDivMod(_: bint1, _: bint3, _: bint6, _: bint7);
 
         ASSERT(bint4 == (int1 / int2));
         ASSERT(bint5 == (int1 % int2));
         ASSERT(bint6 == (int1 / int3));
         ASSERT(bint7 == (int1 % int3));
+    }
+}
+
+Test:Inv() {
+    for(new i, data[2]; i < 100; ++i) {
+        new cBigInt: int1 = random(cellmax) | 1;
+        new cBigInt: int2 = BigIntResult: BigIntInvInternal(_: int1);
+        new cBigInt: int3 = int1 * int2;
+
+        BigIntToBinary(int3, data);
+        // first case if size = 2 second case if size = 1
+        ASSERT((data[0] == 1) || (data[1] == 0 && (data[0] & 0xFFFF) == 1));
     }
 }
 
